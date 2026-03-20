@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
@@ -8,15 +8,72 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 
 export default function SettingsPage() {
+  // AI Provider Settings
   const [aiProvider, setAiProvider] = useState('google');
   const [anthropicKey, setAnthropicKey] = useState('');
   const [googleKey, setGoogleKey] = useState('');
   const [groqKey, setGroqKey] = useState('');
+
+  // Database Settings
+  const [databaseUrl, setDatabaseUrl] = useState('');
+
+  // Redis Settings
+  const [redisHost, setRedisHost] = useState('localhost');
+  const [redisPort, setRedisPort] = useState('6379');
+  const [redisPassword, setRedisPassword] = useState('');
+
+  // Browser Settings
+  const [defaultBrowser, setDefaultBrowser] = useState('edge');
+  const [autoWhiskExtId, setAutoWhiskExtId] = useState('');
+
+  // Remotion Settings
+  const [remotionTimeout, setRemotionTimeout] = useState('300000');
+  const [remotionConcurrency, setRemotionConcurrency] = useState('2');
+
+  // UI State
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
     type: 'success' | 'error';
     text: string;
   } | null>(null);
+
+  // Load current settings on mount
+  useEffect(() => {
+    loadSettings();
+  }, []);
+
+  const loadSettings = async () => {
+    try {
+      const response = await fetch('/api/settings');
+      if (!response.ok) throw new Error('Failed to load settings');
+
+      const data = await response.json();
+
+      // Populate form with current values
+      setAiProvider(data.AI_PROVIDER || 'google');
+      setAnthropicKey(data.ANTHROPIC_API_KEY || '');
+      setGoogleKey(data.GOOGLE_AI_API_KEY || '');
+      setGroqKey(data.GROQ_API_KEY || '');
+      setDatabaseUrl(data.DATABASE_URL || '');
+      setRedisHost(data.REDIS_HOST || 'localhost');
+      setRedisPort(data.REDIS_PORT || '6379');
+      setRedisPassword(data.REDIS_PASSWORD || '');
+      setDefaultBrowser(data.DEFAULT_BROWSER || 'edge');
+      setAutoWhiskExtId(data.AUTO_WHISK_EXTENSION_ID || 'gedfnhdibkfgacmkbjgpfjihacalnlpn');
+      setRemotionTimeout(data.REMOTION_TIMEOUT_MS || '300000');
+      setRemotionConcurrency(data.REMOTION_CONCURRENCY || '2');
+
+      setLoading(false);
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+      setMessage({
+        type: 'error',
+        text: 'Failed to load current settings. Using defaults.',
+      });
+      setLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -31,16 +88,27 @@ export default function SettingsPage() {
           ANTHROPIC_API_KEY: anthropicKey,
           GOOGLE_AI_API_KEY: googleKey,
           GROQ_API_KEY: groqKey,
+          DATABASE_URL: databaseUrl,
+          REDIS_HOST: redisHost,
+          REDIS_PORT: redisPort,
+          REDIS_PASSWORD: redisPassword,
+          DEFAULT_BROWSER: defaultBrowser,
+          AUTO_WHISK_EXTENSION_ID: autoWhiskExtId,
+          REMOTION_TIMEOUT_MS: remotionTimeout,
+          REMOTION_CONCURRENCY: remotionConcurrency,
         }),
       });
 
       if (!response.ok) throw new Error('Failed to save settings');
 
-      setMessage({ type: 'success', text: 'Settings saved successfully' });
+      setMessage({
+        type: 'success',
+        text: '✅ Settings saved to .env file! Restart workers for changes to take effect.',
+      });
     } catch (error) {
       setMessage({
         type: 'error',
-        text: 'Failed to save settings. Check console for details.',
+        text: '❌ Failed to save settings. Check console for details.',
       });
       console.error('Settings save error:', error);
     } finally {
@@ -48,35 +116,52 @@ export default function SettingsPage() {
     }
   };
 
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="SETTINGS" subtitle="Loading..." />
+        <div className="text-center py-12 text-on-surface-variant">
+          Loading settings...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div>
       <PageHeader
         title="SETTINGS"
-        subtitle="Configure API Keys and Preferences"
+        subtitle="Configure .env Variables"
       />
 
-      <div className="max-w-3xl">
+      <div className="max-w-3xl space-y-6">
         {/* AI Provider Section */}
-        <Card variant="default" className="mb-6">
+        <Card variant="default">
           <div className="border-b border-outline-variant px-6 py-4">
             <h2 className="text-lg font-bold text-white uppercase tracking-wider">
-              AI PROVIDER
+              🤖 AI SCRIPT ANALYSIS
             </h2>
+            <p className="text-sm text-on-surface-variant mt-1">
+              Choose which AI model analyzes your news scripts and generates scene descriptions
+            </p>
           </div>
 
           <div className="p-6 space-y-6">
             <div>
               <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
-                Default Provider
+                AI Provider
               </label>
               <Select
                 value={aiProvider}
                 onChange={(e) => setAiProvider(e.target.value)}
               >
-                <option value="claude">Claude (Anthropic)</option>
-                <option value="google">Google AI</option>
-                <option value="groq">Groq</option>
+                <option value="claude">Claude 3.5 Sonnet (Anthropic) - Recommended</option>
+                <option value="google">Gemini Pro (Google AI)</option>
+                <option value="groq">Llama 3 (Groq)</option>
               </Select>
+              <p className="text-xs text-on-surface-variant mt-2">
+                Claude is most accurate for news analysis. Groq is fastest. Google is free tier friendly.
+              </p>
             </div>
 
             <div>
@@ -87,8 +172,11 @@ export default function SettingsPage() {
                 type="password"
                 value={anthropicKey}
                 onChange={(e) => setAnthropicKey(e.target.value)}
-                placeholder="sk-ant-..."
+                placeholder="sk-ant-api03-..."
               />
+              <p className="text-xs text-on-surface-variant mt-2">
+                Get your key at: <a href="https://console.anthropic.com" target="_blank" className="underline">console.anthropic.com</a>
+              </p>
             </div>
 
             <div>
@@ -99,8 +187,11 @@ export default function SettingsPage() {
                 type="password"
                 value={googleKey}
                 onChange={(e) => setGoogleKey(e.target.value)}
-                placeholder="AI..."
+                placeholder="AIzaSy..."
               />
+              <p className="text-xs text-on-surface-variant mt-2">
+                Get your key at: <a href="https://makersuite.google.com/app/apikey" target="_blank" className="underline">Google AI Studio</a>
+              </p>
             </div>
 
             <div>
@@ -113,16 +204,106 @@ export default function SettingsPage() {
                 onChange={(e) => setGroqKey(e.target.value)}
                 placeholder="gsk_..."
               />
+              <p className="text-xs text-on-surface-variant mt-2">
+                Get your key at: <a href="https://console.groq.com" target="_blank" className="underline">console.groq.com</a>
+              </p>
             </div>
           </div>
         </Card>
 
-        {/* Browser Configuration */}
-        <Card variant="default" className="mb-6">
+        {/* Database Configuration */}
+        <Card variant="default">
           <div className="border-b border-outline-variant px-6 py-4">
             <h2 className="text-lg font-bold text-white uppercase tracking-wider">
-              BROWSER AUTOMATION
+              💾 DATABASE
             </h2>
+            <p className="text-sm text-on-surface-variant mt-1">
+              PostgreSQL connection for storing jobs and scenes
+            </p>
+          </div>
+
+          <div className="p-6 space-y-6">
+            <div>
+              <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                Database URL
+              </label>
+              <Input
+                type="text"
+                value={databaseUrl}
+                onChange={(e) => setDatabaseUrl(e.target.value)}
+                placeholder="postgresql://user:password@localhost:5432/dbname"
+              />
+              <p className="text-xs text-on-surface-variant mt-2">
+                Default (Docker): <code className="bg-surface px-1">postgresql://obsidian:obsidian_password@localhost:5433/obsidian_news</code>
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Redis Configuration */}
+        <Card variant="default">
+          <div className="border-b border-outline-variant px-6 py-4">
+            <h2 className="text-lg font-bold text-white uppercase tracking-wider">
+              🔄 REDIS QUEUE
+            </h2>
+            <p className="text-sm text-on-surface-variant mt-1">
+              Redis connection for BullMQ job queues
+            </p>
+          </div>
+
+          <div className="p-6 space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                  Host
+                </label>
+                <Input
+                  type="text"
+                  value={redisHost}
+                  onChange={(e) => setRedisHost(e.target.value)}
+                  placeholder="localhost"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                  Port
+                </label>
+                <Input
+                  type="text"
+                  value={redisPort}
+                  onChange={(e) => setRedisPort(e.target.value)}
+                  placeholder="6379"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                Password
+              </label>
+              <Input
+                type="password"
+                value={redisPassword}
+                onChange={(e) => setRedisPassword(e.target.value)}
+                placeholder="redis_password"
+              />
+              <p className="text-xs text-on-surface-variant mt-2">
+                Default (Docker): <code className="bg-surface px-1">obsidian_redis_password</code>
+              </p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Browser Automation */}
+        <Card variant="default">
+          <div className="border-b border-outline-variant px-6 py-4">
+            <h2 className="text-lg font-bold text-white uppercase tracking-wider">
+              🌐 BROWSER AUTOMATION
+            </h2>
+            <p className="text-sm text-on-surface-variant mt-1">
+              Browser settings for HeyGen avatar generation and Google Wisk image generation
+            </p>
           </div>
 
           <div className="p-6 space-y-6">
@@ -130,19 +311,78 @@ export default function SettingsPage() {
               <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
                 Default Browser
               </label>
-              <Select defaultValue="edge">
+              <Select
+                value={defaultBrowser}
+                onChange={(e) => setDefaultBrowser(e.target.value)}
+              >
                 <option value="chrome">Chrome</option>
-                <option value="edge">Edge</option>
+                <option value="edge">Edge (Recommended for Windows)</option>
                 <option value="chromium">Chromium</option>
               </Select>
+              <p className="text-xs text-on-surface-variant mt-2">
+                Used when launching HeyGen for avatar creation. Make sure it's installed.
+              </p>
             </div>
 
-            <div className="text-sm text-on-surface-variant">
-              <p>
-                Browser automation is used for launching HeyGen for avatar
-                generation. Make sure the selected browser is installed on your
-                system.
+            <div>
+              <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                AutoWhisk Extension ID
+              </label>
+              <Input
+                type="text"
+                value={autoWhiskExtId}
+                onChange={(e) => setAutoWhiskExtId(e.target.value)}
+                placeholder="gedfnhdibkfgacmkbjgpfjihacalnlpn"
+              />
+              <p className="text-xs text-on-surface-variant mt-2">
+                Default ID works for most users. Only change if you have a custom version.
               </p>
+            </div>
+          </div>
+        </Card>
+
+        {/* Remotion Rendering */}
+        <Card variant="default">
+          <div className="border-b border-outline-variant px-6 py-4">
+            <h2 className="text-lg font-bold text-white uppercase tracking-wider">
+              🎬 VIDEO RENDERING
+            </h2>
+            <p className="text-sm text-on-surface-variant mt-1">
+              Remotion video rendering performance settings
+            </p>
+          </div>
+
+          <div className="p-6 space-y-6">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                  Timeout (ms)
+                </label>
+                <Input
+                  type="text"
+                  value={remotionTimeout}
+                  onChange={(e) => setRemotionTimeout(e.target.value)}
+                  placeholder="300000"
+                />
+                <p className="text-xs text-on-surface-variant mt-2">
+                  Default: 5 minutes (300000 ms)
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                  Concurrency
+                </label>
+                <Input
+                  type="text"
+                  value={remotionConcurrency}
+                  onChange={(e) => setRemotionConcurrency(e.target.value)}
+                  placeholder="2"
+                />
+                <p className="text-xs text-on-surface-variant mt-2">
+                  CPU cores to use (default: 2)
+                </p>
+              </div>
             </div>
           </div>
         </Card>
@@ -150,7 +390,7 @@ export default function SettingsPage() {
         {/* Message Display */}
         {message && (
           <div
-            className={`px-4 py-3 mb-6 border-l-4 ${
+            className={`px-4 py-3 border-l-4 ${
               message.type === 'success'
                 ? 'bg-green-900/20 border-green-500 text-green-400'
                 : 'bg-red-900/20 border-red-500 text-red-400'
@@ -167,8 +407,12 @@ export default function SettingsPage() {
           disabled={saving}
           className="w-full"
         >
-          {saving ? 'SAVING...' : 'SAVE SETTINGS'}
+          {saving ? 'SAVING TO .ENV FILE...' : 'SAVE ALL SETTINGS'}
         </Button>
+
+        <div className="text-xs text-on-surface-variant text-center pb-6">
+          ⚠️ After saving, restart workers (STOP.bat then START.bat) for changes to take effect
+        </div>
       </div>
     </div>
   );
