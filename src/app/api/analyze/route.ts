@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { queueAnalyze } from '@/lib/queue/queues';
+import { ErrorCode, createErrorResponse, logError } from '@/lib/errors/error-codes';
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,8 +17,9 @@ export async function POST(request: NextRequest) {
     }
 
     if (raw_script.length < 50) {
+      logError('API/Analyze', ErrorCode.SCRIPT_TOO_SHORT, `Length: ${raw_script.length}`);
       return NextResponse.json(
-        { error: 'raw_script must be at least 50 characters' },
+        createErrorResponse(ErrorCode.SCRIPT_TOO_SHORT, `Your script has ${raw_script.length} characters. Need at least 100.`),
         { status: 400 }
       );
     }
@@ -65,11 +67,20 @@ export async function POST(request: NextRequest) {
     );
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('❌ [API] Error creating job:', error);
+
+    // Determine error code based on error type
+    let errorCode = ErrorCode.UNKNOWN_ERROR;
+    if (errorMessage.includes('database') || errorMessage.includes('postgres')) {
+      errorCode = ErrorCode.DATABASE_ERROR;
+    } else if (errorMessage.includes('redis') || errorMessage.includes('queue')) {
+      errorCode = ErrorCode.QUEUE_FAILED;
+    }
+
+    logError('API/Analyze', errorCode, error);
 
     return NextResponse.json(
       {
-        error: 'Failed to create job',
+        ...createErrorResponse(errorCode),
         details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
       },
       { status: 500 }

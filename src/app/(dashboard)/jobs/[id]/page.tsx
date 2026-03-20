@@ -22,6 +22,8 @@ export default function StoryboardEditorPage() {
   const { job, scenes, loading, error, refetch } = useJob(jobId);
   const [selectedSceneIndex, setSelectedSceneIndex] = useState<number>(0);
   const sceneRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const [queuePaused, setQueuePaused] = useState(false);
+  const [resumingQueue, setResumingQueue] = useState(false);
 
   // Poll every 3 seconds until job reaches terminal status
   usePolling(
@@ -33,6 +35,47 @@ export default function StoryboardEditorPage() {
     },
     !!job && !isTerminalStatus(job.status)
   );
+
+  // Detect if queue is paused (scenes stuck in generating for > 5 minutes)
+  useEffect(() => {
+    if (!job || job.status !== 'generating_images') {
+      setQueuePaused(false);
+      return;
+    }
+
+    const stuckScenes = scenes.filter((scene) => {
+      if (scene.generation_status !== 'generating') return false;
+
+      const updatedAt = new Date(scene.updated_at).getTime();
+      const now = Date.now();
+      const elapsedMinutes = (now - updatedAt) / 1000 / 60;
+
+      return elapsedMinutes > 5;
+    });
+
+    setQueuePaused(stuckScenes.length > 0);
+  }, [job, scenes]);
+
+  // Handler to resume queue
+  const handleResumeQueue = async () => {
+    setResumingQueue(true);
+    try {
+      const response = await fetch('/api/queue/resume', { method: 'POST' });
+      const data = await response.json();
+
+      if (data.success) {
+        setQueuePaused(false);
+        setTimeout(() => refetch(), 2000); // Refresh after 2 seconds
+      } else {
+        alert('Failed to resume queue. Check worker logs.');
+      }
+    } catch (error) {
+      console.error('Failed to resume queue:', error);
+      alert('Failed to resume queue. Check that workers are running.');
+    } finally {
+      setResumingQueue(false);
+    }
+  };
 
   // Scroll to selected scene
   useEffect(() => {
@@ -231,6 +274,49 @@ export default function StoryboardEditorPage() {
           </Card>
         )}
 
+        {/* Queue Paused Warning */}
+        {queuePaused && (
+          <div className="p-6 bg-yellow-900/20 border-2 border-yellow-500">
+            <div className="flex items-start gap-4">
+              <Icon name="warning" size="lg" className="text-yellow-500 flex-shrink-0" />
+              <div className="flex-1">
+                <div className="font-bold text-yellow-500 text-lg uppercase tracking-wider mb-2">
+                  Queue Appears to be Paused
+                </div>
+                <div className="text-sm text-on-surface mb-4">
+                  Some scenes have been generating for more than 5 minutes. This usually means:
+                </div>
+                <ul className="list-disc list-inside text-sm text-on-surface mb-4 space-y-1">
+                  <li>Google Wisk requires manual login (cookie expired)</li>
+                  <li>Ban detection paused the queue</li>
+                  <li>Worker process crashed</li>
+                </ul>
+                <div className="text-sm text-on-surface mb-4">
+                  <strong>Try this first:</strong> Log into{' '}
+                  <a
+                    href="https://labs.google.com/wisk"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-yellow-500 underline hover:text-yellow-400"
+                  >
+                    Google Wisk
+                  </a>{' '}
+                  manually, then click the button below.
+                </div>
+                <Button
+                  variant="primary"
+                  onClick={handleResumeQueue}
+                  disabled={resumingQueue}
+                  className="bg-yellow-500 hover:bg-yellow-400 text-black"
+                >
+                  <Icon name="play_arrow" size="md" />
+                  {resumingQueue ? 'RESUMING QUEUE...' : 'RESUME QUEUE'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Scenes Grid */}
         {showScenes && (
           <div>
@@ -246,7 +332,7 @@ export default function StoryboardEditorPage() {
               {scenes.map((scene, index) => (
                 <div
                   key={scene.id}
-                  ref={(el) => (sceneRefs.current[scene.id] = el)}
+                  ref={(el) => { sceneRefs.current[scene.id] = el; }}
                   onClick={() => setSelectedSceneIndex(index)}
                 >
                   <SceneCard
@@ -280,12 +366,12 @@ export default function StoryboardEditorPage() {
             <div className="p-6 space-y-4">
               <div className="aspect-video bg-surface-container-lowest">
                 <video
-                  src={job.final_video_url}
+                  src={`/api/files?path=${encodeURIComponent(job.final_video_url)}`}
                   controls
                   className="w-full h-full object-contain"
                 />
               </div>
-              <a href={job.final_video_url} download>
+              <a href={`/api/files?path=${encodeURIComponent(job.final_video_url)}`} download>
                 <Button variant="primary" className="w-full">
                   <Icon name="download" size="md" />
                   DOWNLOAD FINAL VIDEO

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { saveBuffer } from '@/lib/storage/local';
 import { queueRender } from '@/lib/queue/queues';
+import { ErrorCode, createErrorResponse, logError } from '@/lib/errors/error-codes';
 
 /**
  * POST /api/jobs/[id]/compile
@@ -70,19 +71,24 @@ export async function POST(
     const avatarFile = formData.get('avatar_mp4') as File;
 
     if (!avatarFile) {
+      logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, 'No file provided');
       return NextResponse.json(
-        { error: 'No avatar MP4 file provided. Use field name "avatar_mp4"' },
+        createErrorResponse(
+          ErrorCode.AVATAR_UPLOAD_FAILED,
+          'No avatar MP4 file provided. Ensure the file field is named "avatar_mp4".'
+        ),
         { status: 400 }
       );
     }
 
     // Validate file type
     if (avatarFile.type !== 'video/mp4') {
+      logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, `Invalid type: ${avatarFile.type}`);
       return NextResponse.json(
-        {
-          error: 'Invalid file type. Must be video/mp4',
-          receivedType: avatarFile.type,
-        },
+        createErrorResponse(
+          ErrorCode.AVATAR_UPLOAD_FAILED,
+          `Invalid file type "${avatarFile.type}". Please upload an MP4 video file (H.264 codec, 48kHz audio).`
+        ),
         { status: 400 }
       );
     }
@@ -90,11 +96,13 @@ export async function POST(
     // Validate file size (max 100MB)
     const maxSize = 100 * 1024 * 1024; // 100MB
     if (avatarFile.size > maxSize) {
+      const sizeMB = (avatarFile.size / 1024 / 1024).toFixed(2);
+      logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, `File too large: ${sizeMB}MB`);
       return NextResponse.json(
-        {
-          error: 'File too large. Maximum size: 100MB',
-          receivedSize: `${(avatarFile.size / 1024 / 1024).toFixed(2)}MB`,
-        },
+        createErrorResponse(
+          ErrorCode.AVATAR_UPLOAD_FAILED,
+          `File too large (${sizeMB}MB). Maximum size is 100MB. Try compressing the video first.`
+        ),
         { status: 400 }
       );
     }
@@ -136,11 +144,22 @@ export async function POST(
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    console.error('❌ [API] Error compiling job:', error);
+
+    // Determine error code based on error type
+    let errorCode = ErrorCode.UNKNOWN_ERROR;
+    if (errorMessage.includes('database') || errorMessage.includes('postgres')) {
+      errorCode = ErrorCode.DATABASE_ERROR;
+    } else if (errorMessage.includes('redis') || errorMessage.includes('queue')) {
+      errorCode = ErrorCode.QUEUE_FAILED;
+    } else if (errorMessage.includes('disk') || errorMessage.includes('ENOSPC')) {
+      errorCode = ErrorCode.DISK_SPACE_LOW;
+    }
+
+    logError('API/Compile', errorCode, error);
 
     return NextResponse.json(
       {
-        error: 'Failed to compile job',
+        ...createErrorResponse(errorCode),
         details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
       },
       { status: 500 }

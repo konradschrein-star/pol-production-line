@@ -4,6 +4,7 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
+import { DiskSpaceWidget } from '@/components/system/DiskSpaceWidget';
 import { formatRelativeTime } from '@/lib/utils/format';
 import type { JobStatus } from '@/lib/utils/status';
 
@@ -51,6 +52,11 @@ export default async function DashboardPage() {
           </Link>
         }
       />
+
+      {/* System Warnings */}
+      <div className="mb-6">
+        <DiskSpaceWidget />
+      </div>
 
       {/* Metrics Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">

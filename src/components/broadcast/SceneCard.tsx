@@ -119,7 +119,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
       <div className="aspect-video bg-surface-container-lowest relative overflow-hidden">
         {scene.image_url ? (
           <img
-            src={scene.image_url}
+            src={`/api/files?path=${encodeURIComponent(scene.image_url)}`}
             alt={`Scene ${scene.scene_order}`}
             className="w-full h-full object-cover"
           />

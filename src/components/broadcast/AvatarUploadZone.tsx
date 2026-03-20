@@ -98,7 +98,7 @@ export function AvatarUploadZone({
             <div className="space-y-3">
               <div className="aspect-video bg-surface-container-lowest">
                 <video
-                  src={avatarUrl}
+                  src={`/api/files?path=${encodeURIComponent(avatarUrl)}`}
                   controls
                   className="w-full h-full object-contain"
                 />
