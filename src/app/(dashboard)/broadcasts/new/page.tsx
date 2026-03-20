@@ -13,7 +13,7 @@ import { createJob } from '@/lib/utils/api';
 export default function NewBroadcastPage() {
   const router = useRouter();
   const [script, setScript] = useState('');
-  const [provider, setProvider] = useState('google');
+  const [provider, setProvider] = useState('openai');
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,10 +59,13 @@ export default function NewBroadcastPage() {
     setError(null);
 
     try {
-      // Create FormData with script and avatar file
+      // Create FormData with script, avatar file, and AI provider
       const formData = new FormData();
       formData.append('raw_script', script);
+      formData.append('provider', provider);
       formData.append('avatar', avatarFile);
+
+      console.log('📤 Submitting with provider:', provider);
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -107,6 +110,7 @@ export default function NewBroadcastPage() {
                   value={provider}
                   onChange={(e) => setProvider(e.target.value)}
                 >
+                  <option value="openai">OpenAI (ChatGPT)</option>
                   <option value="claude">Claude (Anthropic)</option>
                   <option value="google">Google AI</option>
                   <option value="groq">Groq</option>

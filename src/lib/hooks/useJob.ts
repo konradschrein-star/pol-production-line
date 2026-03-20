@@ -2,10 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { fetchJob } from '@/lib/utils/api';
+import type { JobStatus } from '@/lib/utils/status';
 
 interface Job {
   id: string;
-  status: string;
+  status: JobStatus;
   raw_script: string;
   avatar_script?: string;
   avatar_mp4_url?: string;
@@ -23,6 +24,7 @@ interface Scene {
   image_url?: string;
   generation_status: string;
   created_at: string;
+  updated_at: string;
 }
 
 export function useJob(id: string) {

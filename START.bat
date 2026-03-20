@@ -47,7 +47,7 @@ echo ============================================
 echo   SYSTEM STARTED SUCCESSFULLY!
 echo ============================================
 echo.
-echo   Web Interface: http://localhost:3000
+echo   Web Interface: http://localhost:8347
 echo.
 echo   3 windows are now running:
 echo   1. This launcher window (you can close this)
@@ -59,7 +59,7 @@ echo.
 
 REM Wait 5 seconds then open browser
 timeout /t 5 /nobreak
-start http://localhost:3000
+start http://localhost:8347
 
 echo Browser opened. You can now close this window.
 echo.

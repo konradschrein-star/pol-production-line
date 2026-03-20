@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '../index';
+import { redisOptions } from '../index';
 import { db } from '../../db';
 import { BrowserManager } from '../../browser';
 import { navigateToAutoWhisk, generateImages, waitForGenerationComplete, getAutoWhiskDownloadFolder } from '../../browser/auto-whisk';
@@ -105,7 +105,7 @@ export const imagesWorker = new Worker<ImageJobData>(
         unlinkSync(downloadedFilePath);
         console.log(`🗑️ [IMAGES] Cleaned up local file`);
       } catch (error) {
-        console.warn(`⚠️ [IMAGES] Could not delete local file: ${error.message}`);
+        console.warn(`⚠️ [IMAGES] Could not delete local file: ${error instanceof Error ? error.message : String(error)}`);
       }
 
       // 11. Check if all scenes for this job are complete
@@ -227,13 +227,9 @@ export const imagesWorker = new Worker<ImageJobData>(
     }
   },
   {
-    connection: redisConnection,
+    connection: redisOptions,
     concurrency: 1, // CRITICAL: Only 1 generation at a time (ban prevention)
-    attempts: MAX_RETRIES, // Max retry attempts
-    backoff: {
-      type: 'exponential',
-      delay: RETRY_BACKOFF_BASE, // 5s, 10s, 20s
-    },
+    // Note: attempts and backoff are configured when adding jobs to the queue
     // Remove rate limiter - we handle delays manually with GENERATION_DELAY
   }
 );

@@ -177,13 +177,12 @@ export async function getVideoDuration(videoUrl: string): Promise<number> {
 
     console.log(`🎥 [Pacing] Video metadata:`);
     console.log(`   Duration: ${metadata.durationInSeconds}s`);
-    console.log(`   FPS: ${metadata.fps}`);
     console.log(`   Dimensions: ${metadata.width}x${metadata.height}`);
 
     return metadata.durationInSeconds;
   } catch (error) {
     console.error(`❌ [Pacing] Failed to get video duration:`, error);
-    throw new Error(`Failed to get video duration: ${error.message}`);
+    throw new Error(`Failed to get video duration: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

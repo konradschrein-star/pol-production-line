@@ -1,12 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { writeFile, mkdir } from 'fs/promises';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import { db } from '@/lib/db';
 import { queueAnalyze } from '@/lib/queue/queues';
 import { ErrorCode, createErrorResponse, logError } from '@/lib/errors/error-codes';
 
+const STORAGE_PATH = process.env.STORAGE_PATH || 'C:\\Users\\konra\\ObsidianNewsDesk';
+
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { raw_script } = body;
+    const formData = await request.formData();
+    const raw_script = formData.get('raw_script') as string;
+    const provider = formData.get('provider') as string || 'openai';
+    const avatarFile = formData.get('avatar') as File | null;
+
+    console.log(`🤖 [API] Selected AI provider: ${provider}`);
 
     // Validate input
     if (!raw_script || typeof raw_script !== 'string') {
@@ -33,22 +42,47 @@ export async function POST(request: NextRequest) {
 
     console.log(`\n📝 [API] Creating new job for script (${raw_script.length} chars)`);
 
-    // Create job in database
+    // Save avatar file if provided
+    let avatarPath: string | null = null;
+    if (avatarFile) {
+      console.log(`🎥 [API] Avatar file provided: ${avatarFile.name} (${(avatarFile.size / 1024 / 1024).toFixed(2)} MB)`);
+
+      // Ensure avatars directory exists
+      const avatarsDir = join(STORAGE_PATH, 'avatars');
+      if (!existsSync(avatarsDir)) {
+        await mkdir(avatarsDir, { recursive: true });
+      }
+
+      // Generate unique filename
+      const timestamp = Date.now();
+      const filename = `avatar_${timestamp}.mp4`;
+      avatarPath = join(avatarsDir, filename);
+
+      // Save file to disk
+      const bytes = await avatarFile.arrayBuffer();
+      const buffer = Buffer.from(bytes);
+      await writeFile(avatarPath, buffer);
+
+      console.log(`✅ [API] Avatar saved to: ${avatarPath}`);
+    }
+
+    // Create job in database with avatar path
     const result = await db.query(
-      `INSERT INTO news_jobs (raw_script, status)
-       VALUES ($1, $2)
+      `INSERT INTO news_jobs (raw_script, avatar_script, avatar_mp4_url, status)
+       VALUES ($1, $2, $3, $4)
        RETURNING id, status, created_at`,
-      [raw_script, 'pending']
+      [raw_script, raw_script, avatarPath, 'pending']
     );
 
     const job = result.rows[0];
 
     console.log(`✅ [API] Job created: ${job.id}`);
 
-    // Queue analysis job
+    // Queue analysis job with provider selection
     await queueAnalyze.add('analyze-script', {
       jobId: job.id,
       rawScript: raw_script,
+      provider: provider as 'openai' | 'claude' | 'google' | 'groq',
     });
 
     console.log(`📨 [API] Job ${job.id} queued for analysis\n`);

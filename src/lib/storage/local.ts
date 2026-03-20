@@ -36,7 +36,7 @@ export async function initStorage(): Promise<void> {
     console.log(`✅ [Storage] Local storage initialized: ${BASE_DIR}`);
   } catch (error) {
     console.error('❌ [Storage] Initialization failed:', error);
-    throw new Error(`Storage initialization failed: ${error.message}`);
+    throw new Error(`Storage initialization failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -70,7 +70,7 @@ export async function saveFile(
     return destPath;
   } catch (error) {
     console.error(`❌ [Storage] Failed to save file ${filename}:`, error);
-    throw new Error(`Failed to save file: ${error.message}`);
+    throw new Error(`Failed to save file: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -99,7 +99,7 @@ export async function saveBuffer(
     return destPath;
   } catch (error) {
     console.error(`❌ [Storage] Failed to save buffer ${filename}:`, error);
-    throw new Error(`Failed to save buffer: ${error.message}`);
+    throw new Error(`Failed to save buffer: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -118,9 +118,9 @@ export async function deleteFile(filePath: string): Promise<void> {
     console.log(`✅ [Storage] File deleted: ${filePath}`);
   } catch (error) {
     // Ignore ENOENT errors (file already gone)
-    if (error.code !== 'ENOENT') {
+    if (!(error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT')) {
       console.error(`❌ [Storage] Failed to delete file:`, error);
-      throw new Error(`Failed to delete file: ${error.message}`);
+      throw new Error(`Failed to delete file: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 }

@@ -18,7 +18,7 @@ export async function navigateToAutoWhisk(page: Page): Promise<void> {
     console.log('✅ [AutoWhisk] Page loaded');
   } catch (error) {
     console.error('❌ [AutoWhisk] Navigation failed:', error);
-    throw new Error(`Failed to navigate to Auto Whisk: ${error.message}`);
+    throw new Error(`Failed to navigate to Auto Whisk: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -130,7 +130,7 @@ export async function generateImages(
 
   } catch (error) {
     console.error('❌ [AutoWhisk] Generation failed:', error);
-    throw new Error(`Auto Whisk generation failed: ${error.message}`);
+    throw new Error(`Auto Whisk generation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -174,7 +174,7 @@ export async function waitForGenerationComplete(
 
   } catch (error) {
     console.error('❌ [AutoWhisk] Wait for completion failed:', error);
-    throw new Error(`Failed to wait for generation: ${error.message}`);
+    throw new Error(`Failed to wait for generation: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

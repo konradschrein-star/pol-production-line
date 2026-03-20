@@ -11,36 +11,52 @@ export async function GET(req: NextRequest) {
     const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '20');
     const status = searchParams.get('status');
-    const offset = (page - 1) * limit;
+    const search = searchParams.get('search');
+    const sortBy = searchParams.get('sortBy') || 'created_at';
+    const sortOrder = searchParams.get('sortOrder') || 'desc';
 
     // Build query
-    let query = 'SELECT * FROM news_jobs';
+    let query = 'SELECT * FROM news_jobs WHERE 1=1';
     const params: any[] = [];
     let paramIndex = 1;
 
+    // Status filter
     if (status && status !== 'all') {
-      query += ` WHERE status = $${paramIndex}`;
+      query += ` AND status = $${paramIndex}`;
       params.push(status);
       paramIndex++;
     }
 
-    query += ' ORDER BY created_at DESC';
-    query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
-    params.push(limit, offset);
-
-    // Get jobs
-    const result = await db.query(query, params);
-
-    // Get total count
-    let countQuery = 'SELECT COUNT(*) FROM news_jobs';
-    const countParams: any[] = [];
-    if (status && status !== 'all') {
-      countQuery += ' WHERE status = $1';
-      countParams.push(status);
+    // Search filter (full-text search)
+    if (search && search.trim()) {
+      query += ` AND (
+        to_tsvector('english', raw_script || ' ' || COALESCE(avatar_script, ''))
+        @@ plainto_tsquery('english', $${paramIndex})
+        OR id::text ILIKE $${paramIndex + 1}
+      )`;
+      params.push(search);
+      params.push(`%${search}%`);
+      paramIndex += 2;
     }
 
-    const countResult = await db.query(countQuery, countParams);
+    // Validate and apply sorting
+    const allowedSortColumns = ['created_at', 'updated_at', 'status', 'id'];
+    const safeSortBy = allowedSortColumns.includes(sortBy) ? sortBy : 'created_at';
+    const safeSortOrder = sortOrder.toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
+    query += ` ORDER BY ${safeSortBy} ${safeSortOrder}`;
+
+    // Count total for pagination
+    const countQuery = query.replace('SELECT *', 'SELECT COUNT(*)');
+    const countResult = await db.query(countQuery, params);
     const total = parseInt(countResult.rows[0].count);
+
+    // Add pagination
+    query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(limit, (page - 1) * limit);
+
+    // Execute query
+    const result = await db.query(query, params);
 
     return NextResponse.json({
       jobs: result.rows,

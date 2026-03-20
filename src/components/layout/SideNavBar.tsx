@@ -9,6 +9,7 @@ export function SideNavBar() {
 
   const navLinks = [
     { href: '/broadcasts', label: 'Broadcasts', icon: 'sensors' },
+    { href: '/wiki', label: 'Wiki', icon: 'menu_book' },
     { href: '/analytics', label: 'Analytics', icon: 'analytics' },
     { href: '/personas', label: 'Personas', icon: 'group' },
     { href: '/settings', label: 'Settings', icon: 'settings' },

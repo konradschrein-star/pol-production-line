@@ -15,7 +15,7 @@ export interface AvatarOverlayProps {
 
 /**
  * Avatar Overlay Component
- * Displays the HeyGen avatar video in a corner with chromakey (green screen removal)
+ * Displays the HeyGen avatar video in a rounded corner box with drop shadow
  */
 export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
   avatarMp4Url,
@@ -56,56 +56,27 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
         pointerEvents: 'none',
       }}
     >
-      <Video
-        src={avatarMp4Url}
+      <div
         style={{
           width: '100%',
           height: '100%',
-          objectFit: 'contain',
-          // Simple chromakey approximation using CSS filters
-          // For production, use WebGL shader for proper green screen removal
-          // This approach works reasonably well for HeyGen's green screen
-          filter: 'saturate(0.9) contrast(1.05) brightness(1.05)',
-          // CSS-based green screen removal (basic)
-          // Note: For better results, implement custom WebGL shader
-          mixBlendMode: 'normal',
+          borderRadius: '12px',
+          overflow: 'hidden',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3)',
+          border: '2px solid rgba(255, 255, 255, 0.1)',
+          backgroundColor: '#1a1a1a',
         }}
-      />
+      >
+        <Video
+          src={avatarMp4Url}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+          }}
+        />
+      </div>
     </AbsoluteFill>
   );
 };
 
-/**
- * Note: Advanced Chromakey Implementation
- *
- * For production-grade green screen removal, implement a WebGL shader:
- *
- * 1. Use Remotion's useVideoTexture hook
- * 2. Apply custom fragment shader:
- *    - Detect green pixels (HSV range)
- *    - Make them transparent
- *    - Apply edge smoothing/feathering
- *
- * Example shader logic:
- * ```glsl
- * uniform sampler2D videoTexture;
- * varying vec2 vUv;
- *
- * void main() {
- *   vec4 color = texture2D(videoTexture, vUv);
- *
- *   // Convert to HSV
- *   float hue = rgb2hue(color.rgb);
- *   float saturation = rgb2saturation(color.rgb);
- *
- *   // Green range: hue 0.25-0.45, saturation > 0.3
- *   if (hue > 0.25 && hue < 0.45 && saturation > 0.3) {
- *     color.a = 0.0; // Transparent
- *   }
- *
- *   gl_FragColor = color;
- * }
- * ```
- *
- * This is beyond the MVP scope but recommended for production.
- */

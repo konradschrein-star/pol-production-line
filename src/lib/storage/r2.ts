@@ -48,7 +48,7 @@ export async function uploadToR2(
     return publicUrl;
   } catch (error) {
     console.error(`❌ [R2] Upload failed for ${key}:`, error);
-    throw new Error(`R2 upload failed: ${error.message}`);
+    throw new Error(`R2 upload failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -83,7 +83,7 @@ export async function uploadBufferToR2(
     return publicUrl;
   } catch (error) {
     console.error(`❌ [R2] Buffer upload failed for ${key}:`, error);
-    throw new Error(`R2 buffer upload failed: ${error.message}`);
+    throw new Error(`R2 buffer upload failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
@@ -108,6 +108,6 @@ export async function getPresignedUrl(
     return url;
   } catch (error) {
     console.error(`❌ [R2] Failed to generate presigned URL for ${key}:`, error);
-    throw new Error(`R2 presigned URL generation failed: ${error.message}`);
+    throw new Error(`R2 presigned URL generation failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }

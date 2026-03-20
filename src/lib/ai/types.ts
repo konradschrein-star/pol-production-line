@@ -10,7 +10,6 @@ export const SceneOutputSchema = z.object({
 
 // Zod schema for AI analysis output
 export const AIAnalysisOutputSchema = z.object({
-  avatar_script: z.string().min(50),
   scenes: z.array(SceneOutputSchema).min(4).max(12),
 });
 
@@ -24,4 +23,4 @@ export interface AIProvider {
 }
 
 // Provider type
-export type ProviderType = 'claude' | 'google' | 'groq';
+export type ProviderType = 'claude' | 'google' | 'groq' | 'openai';

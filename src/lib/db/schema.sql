@@ -10,11 +10,12 @@ CREATE TABLE news_jobs (
     avatar_mp4_url TEXT,
     final_video_url TEXT,
     error_message TEXT,
+    cancellation_reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
 
     CONSTRAINT valid_status CHECK (
-        status IN ('pending', 'analyzing', 'generating_images', 'review_assets', 'rendering', 'completed', 'failed')
+        status IN ('pending', 'analyzing', 'generating_images', 'review_assets', 'rendering', 'completed', 'failed', 'cancelled')
     )
 );
 
@@ -43,6 +44,10 @@ CREATE INDEX idx_news_jobs_status ON news_jobs(status);
 CREATE INDEX idx_news_jobs_created_at ON news_jobs(created_at DESC);
 CREATE INDEX idx_news_scenes_job_id ON news_scenes(job_id);
 CREATE INDEX idx_news_scenes_status ON news_scenes(generation_status);
+
+-- Full-text search index for faster searches
+CREATE INDEX idx_news_jobs_script_search ON news_jobs
+    USING gin(to_tsvector('english', raw_script || ' ' || COALESCE(avatar_script, '')));
 
 -- Updated_at trigger function
 CREATE OR REPLACE FUNCTION update_updated_at_column()

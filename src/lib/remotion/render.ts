@@ -119,7 +119,7 @@ export async function renderNewsVideo(jobData: RenderJobData): Promise<RenderRes
 
   } catch (error) {
     console.error(`❌ [Render] Render failed:`, error);
-    throw new Error(`Remotion render failed: ${error.message}`);
+    throw new Error(`Remotion render failed: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 

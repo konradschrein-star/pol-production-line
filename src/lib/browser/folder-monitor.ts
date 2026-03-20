@@ -1,4 +1,4 @@
-import chokidar from 'chokidar';
+import chokidar, { type FSWatcher } from 'chokidar';
 import { existsSync, statSync, readdirSync } from 'fs';
 import { join, basename } from 'path';
 import { EventEmitter } from 'events';
@@ -14,7 +14,7 @@ export interface FileDetectedEvent {
  * Emits 'file' event when a new image is detected
  */
 export class FolderMonitor extends EventEmitter {
-  private watcher: chokidar.FSWatcher | null = null;
+  private watcher: FSWatcher | null = null;
   private watchPath: string;
   private detectedFiles: Set<string> = new Set();
   private extensions: string[];
@@ -73,7 +73,7 @@ export class FolderMonitor extends EventEmitter {
       this.handleNewFile(filePath);
     });
 
-    this.watcher.on('error', (error) => {
+    this.watcher.on('error', (error: unknown) => {
       console.error('❌ [FolderMonitor] Watcher error:', error);
       this.emit('error', error);
     });

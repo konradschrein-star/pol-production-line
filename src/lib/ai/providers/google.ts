@@ -12,9 +12,10 @@ export class GoogleProvider implements AIProvider {
   async analyzeScript(rawScript: string): Promise<AIAnalysisOutput> {
     try {
       const model = this.client.getGenerativeModel({
-        model: 'gemini-pro',
+        model: 'gemini-2.5-flash', // Updated to latest model
         generationConfig: {
           temperature: 0.7,
+          responseMimeType: 'application/json',
         },
       });
 

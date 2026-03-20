@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '../index';
+import { redisOptions } from '../index';
 import { db } from '../../db';
 import { renderNewsVideo } from '../../remotion/render';
 import { saveFile } from '../../storage/local';
@@ -100,7 +100,7 @@ export const renderWorker = new Worker<RenderJobData>(
           unlinkSync(renderResult.outputPath);
           console.log(`🗑️ [RENDER] Cleaned up temp file`);
         } catch (error) {
-          console.warn(`⚠️ [RENDER] Could not delete temp file: ${error.message}`);
+          console.warn(`⚠️ [RENDER] Could not delete temp file: ${error instanceof Error ? error.message : String(error)}`);
         }
       }
 
@@ -120,14 +120,14 @@ export const renderWorker = new Worker<RenderJobData>(
       // Update job status to failed
       await db.query(
         'UPDATE news_jobs SET status = $1, error_message = $2 WHERE id = $3',
-        ['failed', error.message, jobId]
+        ['failed', error instanceof Error ? error.message : String(error), jobId]
       );
 
       throw error;
     }
   },
   {
-    connection: redisConnection,
+    connection: redisOptions,
     concurrency: 1, // Process one render at a time (CPU intensive)
     limiter: {
       max: 5, // Max 5 renders

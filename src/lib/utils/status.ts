@@ -10,7 +10,8 @@ export type JobStatus =
   | 'review_assets'
   | 'rendering'
   | 'completed'
-  | 'failed';
+  | 'failed'
+  | 'cancelled';
 
 export const STATUS_LABELS: Record<JobStatus, string> = {
   pending: 'Pending',
@@ -20,6 +21,7 @@ export const STATUS_LABELS: Record<JobStatus, string> = {
   rendering: 'Rendering',
   completed: 'Done',
   failed: 'Failed',
+  cancelled: 'Cancelled',
 };
 
 export const STATUS_COLORS: Record<JobStatus, { bg: string; text: string; border: string }> = {
@@ -58,8 +60,13 @@ export const STATUS_COLORS: Record<JobStatus, { bg: string; text: string; border
     text: 'text-red-500',
     border: 'border-red-900/50'
   },
+  cancelled: {
+    bg: 'bg-gray-900/30',
+    text: 'text-gray-400',
+    border: 'border-gray-900/50'
+  },
 };
 
 export function isTerminalStatus(status: JobStatus): boolean {
-  return status === 'completed' || status === 'failed';
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
 }

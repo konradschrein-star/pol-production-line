@@ -2,13 +2,14 @@ import { AIProvider, ProviderType } from './types';
 import { ClaudeProvider } from './providers/claude';
 import { GoogleProvider } from './providers/google';
 import { GroqProvider } from './providers/groq';
+import { OpenAIProvider } from './providers/openai';
 
 export * from './types';
 
 export function createAIProvider(
   providerType?: ProviderType
 ): AIProvider {
-  const provider = providerType || (process.env.AI_PROVIDER as ProviderType) || 'claude';
+  const provider = providerType || (process.env.AI_PROVIDER as ProviderType) || 'openai';
 
   switch (provider) {
     case 'claude': {
@@ -25,7 +26,7 @@ export function createAIProvider(
       if (!apiKey) {
         throw new Error('GOOGLE_AI_API_KEY not set in environment');
       }
-      console.log('🤖 Using Google AI provider');
+      console.log('🤖 Using Google AI (Gemini) provider');
       return new GoogleProvider(apiKey);
     }
 
@@ -36,6 +37,15 @@ export function createAIProvider(
       }
       console.log('🤖 Using Groq AI provider');
       return new GroqProvider(apiKey);
+    }
+
+    case 'openai': {
+      const apiKey = process.env.OPENAI_API_KEY;
+      if (!apiKey) {
+        throw new Error('OPENAI_API_KEY not set in environment');
+      }
+      console.log('🤖 Using OpenAI (ChatGPT) provider');
+      return new OpenAIProvider(apiKey);
     }
 
     default:

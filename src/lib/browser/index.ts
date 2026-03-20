@@ -69,7 +69,7 @@ export class BrowserManager {
       return this.context;
     } catch (error) {
       console.error('❌ [Browser] Launch failed:', error);
-      throw new Error(`Browser launch failed: ${error.message}`);
+      throw new Error(`Browser launch failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

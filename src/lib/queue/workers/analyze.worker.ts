@@ -1,21 +1,23 @@
 import { Worker, Job } from 'bullmq';
-import { redisConnection } from '../index';
+import { redisOptions } from '../index';
 import { queueImages } from '../queues';
 import { db } from '../../db';
-import { createAIProvider } from '../../ai';
+import { createAIProvider, ProviderType } from '../../ai';
 
 interface AnalyzeJobData {
   jobId: string;
   rawScript: string;
+  provider?: ProviderType;
 }
 
 export const analyzeWorker = new Worker<AnalyzeJobData>(
   'queue_analyze',
   async (job: Job<AnalyzeJobData>) => {
-    const { jobId, rawScript } = job.data;
+    const { jobId, rawScript, provider: providerType } = job.data;
 
     console.log(`\n🔍 [ANALYZE] Starting analysis for job ${jobId}`);
     console.log(`📝 Script length: ${rawScript.length} characters`);
+    console.log(`🤖 AI Provider: ${providerType || 'default (from env)'}`);
 
     try {
       // Update job status to analyzing
@@ -24,19 +26,12 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
         ['analyzing', jobId]
       );
 
-      // Call AI provider
-      const provider = createAIProvider();
+      // Call AI provider with specified type
+      const provider = createAIProvider(providerType);
       const analysis = await provider.analyzeScript(rawScript);
 
       console.log(`✅ [ANALYZE] AI analysis complete:`);
-      console.log(`   - Avatar script: ${analysis.avatar_script.length} chars`);
       console.log(`   - Scenes generated: ${analysis.scenes.length}`);
-
-      // Store avatar_script in news_jobs
-      await db.query(
-        'UPDATE news_jobs SET avatar_script = $1 WHERE id = $2',
-        [analysis.avatar_script, jobId]
-      );
 
       // Insert scenes into news_scenes
       for (const scene of analysis.scenes) {
@@ -83,7 +78,6 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
       return {
         success: true,
         scenesGenerated: analysis.scenes.length,
-        avatarScriptLength: analysis.avatar_script.length,
       };
     } catch (error) {
       console.error(`❌ [ANALYZE] Job ${jobId} failed:`, error);
@@ -91,14 +85,14 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
       // Update job status to failed
       await db.query(
         'UPDATE news_jobs SET status = $1, error_message = $2 WHERE id = $3',
-        ['failed', error.message, jobId]
+        ['failed', error instanceof Error ? error.message : String(error), jobId]
       );
 
       throw error;
     }
   },
   {
-    connection: redisConnection,
+    connection: redisOptions,
     concurrency: 2, // Can process 2 analysis jobs in parallel
   }
 );
