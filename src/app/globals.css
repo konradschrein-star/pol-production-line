@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --surface-dim: #131313;
+    --surface: #131313;
+    --surface-bright: #393939;
+    --surface-container-lowest: #0e0e0e;
+    --surface-container-low: #1b1b1b;
+    --surface-container: #1f1f1f;
+    --surface-container-high: #2a2a2a;
+    --surface-container-highest: #353535;
+
+    --on-surface: #e2e2e2;
+    --on-surface-variant: #c6c6c6;
+    --primary: #ffffff;
+    --on-primary: #1a1c1c;
+    --outline: #919191;
+    --outline-variant: #474747;
+  }
+}
+
+.grain-overlay {
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background-image: url(https://lh3.googleusercontent.com/aida-public/AB6AXuBF8esZoTiYp6mWRZKJNUm7n2i6JGsM6eYb6OghCuYzn1dtjhv77o0FbJuqawGAdcBDTgtViLb-T4oW9d5FRXwAUyW5GG8c9Jnymg5ZLMyEvTJbSJjKlFcCBe7-npTy4U_pF3Q1UR9ZECWSyR2RSGYMUuS24IqZBQMcYhKC-dD5PGZ5WQH7Ing7XilqPuoqyD8k3Olv8gafXSoaiT_LDVIdwnRJ5zBERgCFMDOlsq-bgkm84kfYFROInDqJvtZwS9XrXIQPb7d5J93b);
+  opacity: 0.03;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #131313;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #474747;
+}

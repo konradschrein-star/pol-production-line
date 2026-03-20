@@ -1,0 +1,29 @@
+# Handle line endings automatically for Windows
+* text=auto
+
+# Force LF for shell scripts (important for bash)
+*.sh text eol=lf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp4 binary
+*.webm binary
+*.mov binary
+
+# TypeScript/JavaScript
+*.ts text eol=lf
+*.tsx text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.json text eol=lf
+
+# Markdown
+*.md text eol=lf
+
+# Config files
+.gitignore text eol=lf
+.gitattributes text eol=lf
