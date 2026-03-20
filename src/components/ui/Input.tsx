@@ -34,6 +34,7 @@ export function Input({
         border-b-2 ${error ? 'border-error' : 'border-outline'}
         focus:border-primary focus:outline-none
         px-0 py-3 text-sm
+        placeholder:text-outline-variant
         transition-colors duration-150
         disabled:opacity-50 disabled:cursor-not-allowed
         ${className}

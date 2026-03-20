@@ -33,6 +33,7 @@ export default function SettingsPage() {
   // UI State
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<{
     type: 'success' | 'error';
     text: string;
@@ -45,8 +46,22 @@ export default function SettingsPage() {
 
   const loadSettings = async () => {
     try {
-      const response = await fetch('/api/settings');
-      if (!response.ok) throw new Error('Failed to load settings');
+      setError(null);
+      setLoading(true);
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
+      const response = await fetch('/api/settings', {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${response.status}: Failed to load settings`);
+      }
 
       const data = await response.json();
 
@@ -65,12 +80,16 @@ export default function SettingsPage() {
       setRemotionConcurrency(data.REMOTION_CONCURRENCY || '2');
 
       setLoading(false);
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error
+          ? error.name === 'AbortError'
+            ? 'Request timed out after 10 seconds. The API may be slow or unresponsive.'
+            : error.message
+          : 'Unknown error occurred';
+
       console.error('Failed to load settings:', error);
-      setMessage({
-        type: 'error',
-        text: 'Failed to load current settings. Using defaults.',
-      });
+      setError(errorMessage);
       setLoading(false);
     }
   };
@@ -116,12 +135,32 @@ export default function SettingsPage() {
     }
   };
 
-  if (loading) {
+  if (loading && !error) {
     return (
       <div>
         <PageHeader title="SETTINGS" subtitle="Loading..." />
         <div className="text-center py-12 text-on-surface-variant">
           Loading settings...
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div>
+        <PageHeader title="SETTINGS" subtitle="Error Loading Settings" />
+        <div className="max-w-3xl mx-auto">
+          <div className="bg-error/10 border-l-4 border-error text-error p-6">
+            <h3 className="font-bold text-lg mb-2">Failed to Load Settings</h3>
+            <p className="mb-4">{error}</p>
+            <button
+              onClick={() => loadSettings()}
+              className="bg-primary text-on-primary px-4 py-2 font-bold uppercase text-sm tracking-widest hover:bg-on-primary hover:text-primary border border-primary transition-colors duration-75"
+            >
+              Retry
+            </button>
+          </div>
         </div>
       </div>
     );

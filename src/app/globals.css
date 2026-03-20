@@ -26,9 +26,10 @@
   pointer-events: none;
   position: fixed;
   inset: 0;
-  z-index: 50;
-  background-image: url(https://lh3.googleusercontent.com/aida-public/AB6AXuBF8esZoTiYp6mWRZKJNUm7n2i6JGsM6eYb6OghCuYzn1dtjhv77o0FbJuqawGAdcBDTgtViLb-T4oW9d5FRXwAUyW5GG8c9Jnymg5ZLMyEvTJbSJjKlFcCBe7-npTy4U_pF3Q1UR9ZECWSyR2RSGYMUuS24IqZBQMcYhKC-dD5PGZ5WQH7Ing7XilqPuoqyD8k3Olv8gafXSoaiT_LDVIdwnRJ5zBERgCFMDOlsq-bgkm84kfYFROInDqJvtZwS9XrXIQPb7d5J93b);
+  z-index: 99;
   opacity: 0.03;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
 }
 
 ::-webkit-scrollbar {

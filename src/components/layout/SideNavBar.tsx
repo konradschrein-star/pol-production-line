@@ -47,7 +47,7 @@ export function SideNavBar() {
               transition-colors
               ${
                 isActive(link.href)
-                  ? 'bg-surface-bright text-white border-l-4 border-white'
+                  ? 'bg-surface-bright text-white'
                   : 'text-on-surface-variant hover:bg-surface-container hover:text-white'
               }
             `}

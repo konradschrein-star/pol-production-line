@@ -40,7 +40,7 @@ export function DataTable<T extends Record<string, any>>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-outline-variant">
+        <tbody className="divide-y divide-outline-variant/20">
           {data.length === 0 ? (
             <tr>
               <td
@@ -57,7 +57,7 @@ export function DataTable<T extends Record<string, any>>({
                 onClick={() => onRowClick?.(item, index)}
                 className={`
                   ${onRowClick ? 'cursor-pointer hover:bg-surface-container transition-colors' : ''}
-                  ${selectedIndex === index ? 'bg-surface-bright ring-2 ring-primary ring-inset' : ''}
+                  ${selectedIndex === index ? 'bg-surface-bright' : ''}
                 `}
               >
                 {columns.map((col) => (

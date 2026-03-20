@@ -33,6 +33,9 @@ const config: Config = {
         label: ['Inter', 'sans-serif'],
         mono: ['Roboto Mono', 'monospace'],
       },
+      fontSize: {
+        'label-sm': '0.6875rem', // 11px for brutalist labels
+      },
       borderRadius: {
         DEFAULT: '0px',
         lg: '0px',
