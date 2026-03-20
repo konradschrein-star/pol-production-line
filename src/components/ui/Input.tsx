@@ -30,12 +30,12 @@ export function Input({
       disabled={disabled}
       maxLength={maxLength}
       className={`
-        w-full bg-surface-container-lowest text-on-surface
-        border-b-2 ${error ? 'border-error' : 'border-outline'}
-        focus:border-primary focus:outline-none
-        px-0 py-3 text-sm
-        placeholder:text-outline-variant
-        transition-colors duration-150
+        w-full bg-surface-container-low text-on-surface
+        border ${error ? 'border-red-500' : 'border-outline-variant/50'}
+        focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/20
+        rounded-md px-4 py-2.5 text-sm
+        placeholder:text-on-surface-variant/60
+        transition-all duration-150
         disabled:opacity-50 disabled:cursor-not-allowed
         ${className}
       `}

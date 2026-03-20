@@ -44,22 +44,22 @@ export default async function DashboardPage() {
   return (
     <div>
       <PageHeader
-        title="DASHBOARD"
+        title="Dashboard"
         subtitle="System Overview"
         actions={
           <Link href="/broadcasts/new">
-            <Button variant="primary">NEW BROADCAST</Button>
+            <Button variant="primary">New Broadcast</Button>
           </Link>
         }
       />
 
       {/* System Warnings */}
-      <div className="mb-6">
+      <div className="mb-8">
         <DiskSpaceWidget />
       </div>
 
       {/* Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
         <Card variant="default">
           <div className="p-6">
             <div className="text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">

@@ -27,19 +27,25 @@
   position: fixed;
   inset: 0;
   z-index: 99;
-  opacity: 0.03;
+  opacity: 0.015;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='grain'%3E%3CfeTurbulence baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23grain)'/%3E%3C/svg%3E");
   background-repeat: repeat;
 }
 
 ::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #131313;
+  background: #1a1a1a;
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #474747;
+  background: #3f3f3f;
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4f4f4f;
 }

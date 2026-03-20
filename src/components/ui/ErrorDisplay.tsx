@@ -84,7 +84,7 @@ export function ErrorDisplay({
 
   if (variant === 'card') {
     return (
-      <Card variant="default" className="border-2 border-red-500">
+      <Card variant="default" className="border-2 border-red-500/50">
         <div className="p-6">
           {content}
         </div>
@@ -93,7 +93,7 @@ export function ErrorDisplay({
   }
 
   return (
-    <div className="p-4 bg-red-900/20 border border-red-500">
+    <div className="p-5 bg-red-900/20 border-2 border-red-500/50 rounded-lg">
       {content}
     </div>
   );

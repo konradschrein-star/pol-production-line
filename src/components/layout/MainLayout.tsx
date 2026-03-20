@@ -1,7 +1,6 @@
 import React from 'react';
 import TopNavBar from './TopNavBar';
 import SideNavBar from './SideNavBar';
-import Ticker from './Ticker';
 import GrainOverlay from '@/components/shared/GrainOverlay';
 
 interface MainLayoutProps {
@@ -15,9 +14,10 @@ export function MainLayout({ children }: MainLayoutProps) {
       <main className="flex-1 flex flex-col overflow-hidden">
         <TopNavBar />
         <div className="flex-1 overflow-y-auto">
-          {children}
+          <div className="max-w-[1400px] mx-auto px-12 py-12">
+            {children}
+          </div>
         </div>
-        <Ticker />
       </main>
       <GrainOverlay />
     </div>

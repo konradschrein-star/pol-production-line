@@ -114,9 +114,9 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
   return (
     <Card
       variant="default"
-      className={isSelected ? 'ring-4 ring-primary ring-offset-2 ring-offset-surface' : ''}
+      className={`transition-all duration-200 ${isSelected ? 'ring-2 ring-primary/60 shadow-lg' : 'hover:border-outline-variant/60'}`}
     >
-      <div className="aspect-video bg-surface-container-lowest relative overflow-hidden">
+      <div className="aspect-video bg-surface-container-lowest relative overflow-hidden rounded-t-lg">
         {scene.image_url ? (
           <img
             src={`/api/files?path=${encodeURIComponent(scene.image_url)}`}
@@ -127,27 +127,27 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
           <div className="flex items-center justify-center h-full text-on-surface-variant">
             {scene.generation_status === 'generating' ? (
               <div className="text-center">
-                <Icon name="autorenew" size="xl" className="animate-spin mb-2" />
-                <div>Generating...</div>
+                <Icon name="autorenew" size="xl" className="animate-spin mb-3" />
+                <div className="text-sm">Generating...</div>
               </div>
             ) : scene.generation_status === 'failed' ? (
-              <div className="text-center text-red-500">
-                <Icon name="error" size="xl" className="mb-2" />
-                <div>Generation Failed</div>
+              <div className="text-center text-red-400">
+                <Icon name="error" size="xl" className="mb-3" />
+                <div className="text-sm">Generation Failed</div>
               </div>
             ) : (
               <div className="text-center">
-                <Icon name="image" size="xl" className="mb-2" />
-                <div>No Image</div>
+                <Icon name="image" size="xl" className="mb-3" />
+                <div className="text-sm">No Image</div>
               </div>
             )}
           </div>
         )}
 
         {/* Scene Number Badge */}
-        <div className="absolute top-3 left-3 bg-surface-bright px-3 py-1">
-          <span className="text-xs font-bold text-white">
-            SCENE {scene.scene_order}
+        <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-lg">
+          <span className="text-xs font-semibold text-white">
+            Scene {scene.scene_order}
           </span>
         </div>
 
@@ -167,24 +167,24 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
         </div>
       </div>
 
-      <div className="p-4 space-y-3">
+      <div className="p-6 space-y-5">
         {/* Image Prompt */}
         <div>
-          <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
+          <div className="text-xs font-medium text-on-surface-variant mb-2.5">
             Image Prompt
           </div>
-          <div className="text-xs text-on-surface line-clamp-2">
+          <div className="text-sm text-on-surface leading-relaxed line-clamp-2">
             {scene.image_prompt}
           </div>
         </div>
 
         {/* Ticker Headline */}
         <div>
-          <div className="text-xs font-bold text-on-surface-variant uppercase tracking-wider mb-1">
+          <div className="text-xs font-medium text-on-surface-variant mb-2.5">
             Ticker Headline
           </div>
           {editing ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               <Input
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
@@ -199,7 +199,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
                   disabled={saving}
                   className="flex-1"
                 >
-                  {saving ? 'SAVING...' : 'SAVE'}
+                  {saving ? 'Saving...' : 'Save'}
                 </Button>
                 <Button
                   size="sm"
@@ -210,14 +210,14 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
                   }}
                   disabled={saving}
                 >
-                  CANCEL
+                  Cancel
                 </Button>
               </div>
             </div>
           ) : (
             <div
               onClick={() => setEditing(true)}
-              className="text-sm text-white cursor-pointer hover:text-primary transition-colors"
+              className="text-sm text-white cursor-pointer hover:text-primary transition-colors leading-relaxed p-2 -mx-2 rounded hover:bg-surface-container-low"
             >
               {headline}
             </div>
@@ -225,7 +225,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
         </div>
 
         {/* Actions */}
-        <div className="flex gap-2 pt-2">
+        <div className="flex gap-3 pt-2">
           <Button
             size="sm"
             variant="secondary"
@@ -234,7 +234,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
             className="flex-1"
           >
             <Icon name="refresh" size="sm" />
-            {regenerating ? 'REGENERATING...' : 'REGENERATE'}
+            {regenerating ? 'Regenerating...' : 'Regenerate'}
           </Button>
 
           <label className="flex-1">
@@ -249,7 +249,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
               }}
             >
               <Icon name="upload" size="sm" />
-              {uploading ? 'UPLOADING...' : 'UPLOAD'}
+              {uploading ? 'Uploading...' : 'Upload'}
             </Button>
             <input
               ref={fileInputRef}

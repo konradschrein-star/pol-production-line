@@ -65,22 +65,22 @@ export function DiskSpaceWidget() {
   const iconName = diskSpace.critical ? 'error' : 'warning';
 
   return (
-    <div className={`p-4 ${bgColor} border-2 ${borderColor}`}>
+    <div className={`p-6 ${bgColor} border-2 ${borderColor} rounded-lg`}>
       <div className="flex items-start gap-4">
         <Icon name={iconName} size="lg" className={`${textColor} flex-shrink-0`} />
         <div className="flex-1">
-          <div className={`font-bold ${textColor} text-lg uppercase tracking-wider mb-2`}>
-            {diskSpace.critical ? '⚠️ Critical: Low Disk Space' : '⚠️ Warning: Low Disk Space'}
+          <div className={`font-semibold ${textColor} text-lg mb-3`}>
+            {diskSpace.critical ? 'Critical: Low Disk Space' : 'Warning: Low Disk Space'}
           </div>
-          <div className="text-sm text-on-surface mb-3">
+          <div className="text-sm text-on-surface mb-3 leading-relaxed">
             Only <strong className={textColor}>{diskSpace.freeGB} GB</strong> free on C: drive (
             {diskSpace.usedPercent}% used).
           </div>
-          <div className="text-sm text-on-surface-variant">
+          <div className="text-sm text-on-surface-variant leading-relaxed">
             <strong>Recommendation:</strong> Clean up old videos and temporary files to free up
             space. The system needs at least 5GB free to operate safely.
           </div>
-          <div className="mt-3 text-xs font-mono text-on-surface-variant">
+          <div className="mt-4 text-xs font-mono text-on-surface-variant bg-surface-container-lowest px-3 py-2 rounded">
             Storage: {diskSpace.usedGB} GB / {diskSpace.totalGB} GB
           </div>
         </div>

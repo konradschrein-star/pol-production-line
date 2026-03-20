@@ -1,6 +1,8 @@
+'use client';
+
+import { useEffect, useState } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
-import { db } from '@/lib/db';
 
 interface AnalyticsData {
   totalJobs: number;
@@ -15,59 +17,11 @@ interface AnalyticsData {
   }[];
 }
 
-async function getAnalytics(): Promise<AnalyticsData> {
+async function fetchAnalytics(): Promise<AnalyticsData> {
   try {
-    // Total jobs
-    const totalResult = await db.query('SELECT COUNT(*) as count FROM news_jobs');
-    const totalJobs = parseInt(totalResult.rows[0].count);
-
-    // Jobs by status
-    const statusResult = await db.query(`
-      SELECT status, COUNT(*) as count
-      FROM news_jobs
-      GROUP BY status
-      ORDER BY count DESC
-    `);
-
-    const jobsByStatus = statusResult.rows.map((row) => ({
-      status: row.status,
-      count: parseInt(row.count),
-    }));
-
-    const completedJobs = jobsByStatus.find((s) => s.status === 'completed')?.count || 0;
-    const failedJobs = jobsByStatus.find((s) => s.status === 'failed')?.count || 0;
-    const pendingJobs =
-      jobsByStatus.find((s) => s.status === 'pending')?.count ||
-      jobsByStatus.find((s) => s.status === 'analyzing')?.count ||
-      0;
-
-    // Success rate
-    const successRate =
-      totalJobs > 0 ? Math.round((completedJobs / totalJobs) * 100) : 0;
-
-    // Average processing time (for completed jobs)
-    const timeResult = await db.query(`
-      SELECT AVG(EXTRACT(EPOCH FROM (updated_at - created_at))) as avg_seconds
-      FROM news_jobs
-      WHERE status = 'completed'
-    `);
-
-    const avgSeconds = parseFloat(timeResult.rows[0]?.avg_seconds || '0');
-    const avgMinutes = Math.round(avgSeconds / 60);
-    const avgProcessingTime =
-      avgMinutes > 60
-        ? `${Math.floor(avgMinutes / 60)}h ${avgMinutes % 60}m`
-        : `${avgMinutes}m`;
-
-    return {
-      totalJobs,
-      completedJobs,
-      failedJobs,
-      pendingJobs,
-      successRate,
-      avgProcessingTime,
-      jobsByStatus,
-    };
+    const response = await fetch('/api/analytics');
+    if (!response.ok) throw new Error('Failed to fetch analytics');
+    return await response.json();
   } catch (error) {
     console.error('❌ [Analytics] Error fetching data:', error);
     return {
@@ -82,8 +36,35 @@ async function getAnalytics(): Promise<AnalyticsData> {
   }
 }
 
-export default async function AnalyticsPage() {
-  const analytics = await getAnalytics();
+export default function AnalyticsPage() {
+  const [analytics, setAnalytics] = useState<AnalyticsData>({
+    totalJobs: 0,
+    completedJobs: 0,
+    failedJobs: 0,
+    pendingJobs: 0,
+    successRate: 0,
+    avgProcessingTime: '0m',
+    jobsByStatus: [],
+  });
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchAnalytics().then((data) => {
+      setAnalytics(data);
+      setLoading(false);
+    });
+  }, []);
+
+  if (loading) {
+    return (
+      <div>
+        <PageHeader title="ANALYTICS" subtitle="Loading..." />
+        <div className="text-center py-12 text-on-surface-variant">
+          Loading analytics...
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>

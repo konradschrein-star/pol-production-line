@@ -8,13 +8,13 @@ interface PageHeaderProps {
 
 export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
   return (
-    <div className="flex justify-between items-end border-b border-outline-variant pb-6">
+    <div className="flex justify-between items-end border-b border-outline-variant/30 pb-8 mb-12">
       <div>
-        <h1 className="text-4xl font-black uppercase tracking-tighter text-white">
+        <h1 className="text-3xl font-semibold text-white mb-2">
           {title}
         </h1>
         {subtitle && (
-          <p className="font-mono text-sm text-on-surface-variant mt-2">
+          <p className="text-sm text-on-surface-variant">
             {subtitle}
           </p>
         )}

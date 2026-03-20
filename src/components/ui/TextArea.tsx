@@ -31,17 +31,18 @@ export function TextArea({
         disabled={disabled}
         maxLength={maxLength}
         className={`
-          w-full bg-surface-container-lowest text-on-surface font-mono
-          border-b-2 ${error ? 'border-error' : 'border-outline'}
-          focus:border-primary focus:outline-none
-          px-4 py-3 text-sm resize-none
-          transition-colors duration-150
+          w-full bg-surface-container-low text-on-surface
+          border ${error ? 'border-red-500' : 'border-outline-variant/50'}
+          focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/20
+          rounded-md px-4 py-3 text-sm resize-none leading-relaxed
+          transition-all duration-150
           disabled:opacity-50 disabled:cursor-not-allowed
+          placeholder:text-on-surface-variant/60
           ${className}
         `}
       />
       {maxLength && (
-        <p className="font-mono text-[9px] text-on-surface-variant mt-1">
+        <p className="text-xs text-on-surface-variant mt-2">
           {value.length} / {maxLength} characters
         </p>
       )}

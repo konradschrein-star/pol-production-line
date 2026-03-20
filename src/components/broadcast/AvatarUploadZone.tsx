@@ -64,13 +64,13 @@ export function AvatarUploadZone({
 
   return (
     <Card variant="default">
-      <div className="border-b border-outline-variant px-6 py-4">
-        <h2 className="text-lg font-bold text-white uppercase tracking-wider">
-          AVATAR GENERATION
+      <div className="border-b border-outline-variant/30 px-8 py-5">
+        <h2 className="text-base font-semibold text-white">
+          Avatar Generation
         </h2>
       </div>
 
-      <div className="p-6 space-y-6">
+      <div className="p-8 space-y-8">
         {/* Launch Browser Button */}
         <div>
           <Button
@@ -80,9 +80,9 @@ export function AvatarUploadZone({
             className="w-full"
           >
             <Icon name="open_in_new" size="md" />
-            {launching ? 'LAUNCHING...' : 'LAUNCH HEYGEN BROWSER'}
+            {launching ? 'Launching...' : 'Launch HeyGen Browser'}
           </Button>
-          <p className="mt-2 text-xs text-on-surface-variant">
+          <p className="mt-3 text-sm text-on-surface-variant leading-relaxed">
             Opens HeyGen in your browser for avatar video generation. Make sure
             to use 48kHz audio sample rate.
           </p>
@@ -90,20 +90,20 @@ export function AvatarUploadZone({
 
         {/* Upload Zone */}
         <div>
-          <div className="text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-3">
+          <div className="text-sm font-semibold text-on-surface-variant mb-3">
             Upload Avatar MP4
           </div>
 
           {avatarUrl ? (
             <div className="space-y-3">
-              <div className="aspect-video bg-surface-container-lowest">
+              <div className="aspect-video bg-surface-container-lowest rounded-lg overflow-hidden">
                 <video
                   src={`/api/files?path=${encodeURIComponent(avatarUrl)}`}
                   controls
                   className="w-full h-full object-contain"
                 />
               </div>
-              <div className="text-xs text-green-400 flex items-center gap-2">
+              <div className="text-sm text-green-400 flex items-center gap-2">
                 <Icon name="check_circle" size="sm" />
                 Avatar uploaded successfully
               </div>
@@ -116,9 +116,9 @@ export function AvatarUploadZone({
               }}
               onDragLeave={() => setDragActive(false)}
               onDrop={handleDrop}
-              className={`border-2 border-dashed ${
-                dragActive ? 'border-primary bg-surface-container' : 'border-outline'
-              } p-12 text-center transition-colors`}
+              className={`border-2 border-dashed rounded-lg ${
+                dragActive ? 'border-primary bg-surface-container' : 'border-outline-variant'
+              } p-12 text-center transition-all duration-200`}
             >
               {uploading ? (
                 <div className="flex flex-col items-center gap-3">
@@ -128,7 +128,7 @@ export function AvatarUploadZone({
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center gap-3">
+                <div className="flex flex-col items-center gap-4">
                   <Icon name="cloud_upload" size="xl" className="text-on-surface-variant" />
                   <div className="text-sm text-on-surface">
                     Drag & drop avatar MP4 here
@@ -136,7 +136,7 @@ export function AvatarUploadZone({
                   <div className="text-xs text-on-surface-variant">or</div>
                   <label>
                     <Button variant="secondary" size="sm">
-                      SELECT FILE
+                      Select File
                     </Button>
                     <input
                       type="file"

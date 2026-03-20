@@ -217,7 +217,7 @@ export default function StoryboardEditorPage() {
 
   if (loading && !job) {
     return (
-      <div className="flex items-center justify-center h-96">
+      <div className="flex items-center justify-center h-96 p-8">
         <div className="text-center">
           <Icon name="autorenew" size="xl" className="animate-spin text-primary mb-4" />
           <div className="text-on-surface">Loading job...</div>
@@ -228,14 +228,14 @@ export default function StoryboardEditorPage() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-96">
+      <div className="flex items-center justify-center h-96 p-8">
         <Card variant="default" className="max-w-md">
           <div className="p-6 text-center">
             <Icon name="error" size="xl" className="text-red-500 mb-4" />
-            <div className="text-lg font-bold text-white mb-2">Error</div>
+            <div className="text-lg font-semibold text-white mb-2">Error</div>
             <div className="text-sm text-on-surface-variant">{error}</div>
             <Button variant="primary" onClick={refetch} className="mt-4">
-              RETRY
+              Retry
             </Button>
           </div>
         </Card>
@@ -257,17 +257,17 @@ export default function StoryboardEditorPage() {
       {/* Status Panel */}
       <JobStatusPanel job={job} />
 
-      <div className="p-6 space-y-6">
+      <div className="space-y-10 mt-8">
         {/* Avatar Script (if available) */}
         {job.avatar_script && (
           <Card variant="default">
-            <div className="border-b border-outline-variant px-6 py-4">
-              <h2 className="text-lg font-bold text-white uppercase tracking-wider">
-                AVATAR SCRIPT
+            <div className="border-b border-outline-variant/30 px-8 py-5">
+              <h2 className="text-base font-semibold text-white">
+                Avatar Script
               </h2>
             </div>
-            <div className="p-6">
-              <div className="font-mono text-sm text-on-surface whitespace-pre-wrap">
+            <div className="p-8">
+              <div className="font-mono text-sm text-on-surface whitespace-pre-wrap leading-relaxed">
                 {job.avatar_script}
               </div>
             </div>
@@ -276,11 +276,11 @@ export default function StoryboardEditorPage() {
 
         {/* Queue Paused Warning */}
         {queuePaused && (
-          <div className="p-6 bg-yellow-900/20 border-2 border-yellow-500">
+          <div className="p-8 bg-yellow-900/20 border border-yellow-500/50 rounded-lg">
             <div className="flex items-start gap-4">
-              <Icon name="warning" size="lg" className="text-yellow-500 flex-shrink-0" />
+              <Icon name="warning" size="lg" className="text-yellow-400 flex-shrink-0" />
               <div className="flex-1">
-                <div className="font-bold text-yellow-500 text-lg uppercase tracking-wider mb-2">
+                <div className="font-semibold text-yellow-400 text-lg mb-3">
                   Queue Appears to be Paused
                 </div>
                 <div className="text-sm text-on-surface mb-4">
@@ -320,15 +320,15 @@ export default function StoryboardEditorPage() {
         {/* Scenes Grid */}
         {showScenes && (
           <div>
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-white uppercase tracking-wider">
-                SCENES ({scenes.length})
+            <div className="mb-8 flex items-center justify-between">
+              <h2 className="text-xl font-semibold text-white">
+                Scenes <span className="text-on-surface-variant text-base">({scenes.length})</span>
               </h2>
-              <div className="text-xs text-on-surface-variant">
+              <div className="text-xs text-on-surface-variant bg-surface-container-low px-4 py-2 rounded-lg border border-outline-variant/30">
                 Use ← → or J/K to navigate • Press ? for shortcuts
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
               {scenes.map((scene, index) => (
                 <div
                   key={scene.id}
@@ -358,13 +358,13 @@ export default function StoryboardEditorPage() {
         {/* Final Video Download */}
         {job.status === 'completed' && job.final_video_url && (
           <Card variant="default">
-            <div className="border-b border-outline-variant px-6 py-4">
-              <h2 className="text-lg font-bold text-white uppercase tracking-wider">
-                FINAL VIDEO
+            <div className="border-b border-outline-variant/30 px-8 py-5">
+              <h2 className="text-base font-semibold text-white">
+                Final Video
               </h2>
             </div>
-            <div className="p-6 space-y-4">
-              <div className="aspect-video bg-surface-container-lowest">
+            <div className="p-8 space-y-6">
+              <div className="aspect-video bg-surface-container-lowest rounded-lg overflow-hidden">
                 <video
                   src={`/api/files?path=${encodeURIComponent(job.final_video_url)}`}
                   controls
@@ -374,7 +374,7 @@ export default function StoryboardEditorPage() {
               <a href={`/api/files?path=${encodeURIComponent(job.final_video_url)}`} download>
                 <Button variant="primary" className="w-full">
                   <Icon name="download" size="md" />
-                  DOWNLOAD FINAL VIDEO
+                  Download Final Video
                 </Button>
               </a>
             </div>

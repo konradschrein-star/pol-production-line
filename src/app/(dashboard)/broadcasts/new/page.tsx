@@ -7,14 +7,35 @@ import { Card } from '@/components/ui/Card';
 import { TextArea } from '@/components/ui/TextArea';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
+import { Icon } from '@/components/ui/Icon';
 import { createJob } from '@/lib/utils/api';
 
 export default function NewBroadcastPage() {
   const router = useRouter();
   const [script, setScript] = useState('');
   const [provider, setProvider] = useState('google');
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dragActive, setDragActive] = useState(false);
+
+  const handleAvatarDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragActive(false);
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('video/')) {
+      setAvatarFile(file);
+    } else {
+      setError('Please upload a video file (MP4)');
+    }
+  };
+
+  const handleAvatarSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setAvatarFile(file);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,12 +50,32 @@ export default function NewBroadcastPage() {
       return;
     }
 
+    if (!avatarFile) {
+      setError('Please upload the HeyGen avatar video');
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
     try {
-      const result = await createJob(script);
-      router.push(`/jobs/${result.jobId}`);
+      // Create FormData with script and avatar file
+      const formData = new FormData();
+      formData.append('raw_script', script);
+      formData.append('avatar', avatarFile);
+
+      const response = await fetch('/api/analyze', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create job');
+      }
+
+      const result = await response.json();
+      router.push(`/jobs/${result.job.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create job');
       setSubmitting(false);
@@ -44,22 +85,22 @@ export default function NewBroadcastPage() {
   return (
     <div>
       <PageHeader
-        title="NEW BROADCAST"
-        subtitle="Create a New Video Production Job"
+        title="New Broadcast"
+        subtitle="Create a new video production job"
       />
 
-      <div className="max-w-4xl">
+      <div className="max-w-3xl">
         <form onSubmit={handleSubmit}>
-          <Card variant="default" className="mb-6">
-            <div className="border-b border-outline-variant px-6 py-4">
-              <h2 className="text-lg font-bold text-white uppercase tracking-wider">
-                SCRIPT INPUT
+          <Card variant="default" className="mb-8">
+            <div className="border-b border-outline-variant/30 px-8 py-5">
+              <h2 className="text-base font-semibold text-white">
+                Script Input
               </h2>
             </div>
 
-            <div className="p-6 space-y-6">
+            <div className="p-8 space-y-8">
               <div>
-                <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                <label className="block text-sm font-semibold text-on-surface-variant mb-2">
                   AI Provider
                 </label>
                 <Select
@@ -70,19 +111,19 @@ export default function NewBroadcastPage() {
                   <option value="google">Google AI</option>
                   <option value="groq">Groq</option>
                 </Select>
-                <p className="mt-2 text-xs text-on-surface-variant">
+                <p className="mt-3 text-sm text-on-surface-variant leading-relaxed">
                   This provider will analyze your script and generate scene
                   descriptions.
                 </p>
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                <label className="block text-sm font-semibold text-on-surface-variant mb-2">
                   Raw Script
                 </label>
                 <TextArea
                   value={script}
-                  onChange={(e) => setScript(e.target.value)}
+                  onChange={setScript}
                   placeholder="Paste your news script here...
 
 Example:
@@ -93,7 +134,7 @@ In other news, tensions continue to rise in Eastern Europe as diplomatic talks b
                   rows={20}
                   className="font-mono text-sm"
                 />
-                <div className="mt-2 flex items-center justify-between text-xs text-on-surface-variant">
+                <div className="mt-3 flex items-center justify-between text-xs text-on-surface-variant">
                   <span>Minimum 100 characters required</span>
                   <span>
                     {script.length} / 10,000 characters
@@ -101,22 +142,85 @@ In other news, tensions continue to rise in Eastern Europe as diplomatic talks b
                 </div>
               </div>
 
+              <div>
+                <label className="block text-sm font-semibold text-on-surface-variant mb-2">
+                  HeyGen Avatar Video
+                </label>
+                {avatarFile ? (
+                  <div className="border-2 border-green-500 bg-green-900/10 p-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <Icon name="check_circle" size="lg" className="text-green-500" />
+                        <div>
+                          <div className="text-sm font-medium text-white">
+                            {avatarFile.name}
+                          </div>
+                          <div className="text-xs text-on-surface-variant mt-1">
+                            {(avatarFile.size / 1024 / 1024).toFixed(2)} MB
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setAvatarFile(null)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      setDragActive(true);
+                    }}
+                    onDragLeave={() => setDragActive(false)}
+                    onDrop={handleAvatarDrop}
+                    className={`border-2 border-dashed ${
+                      dragActive ? 'border-primary bg-surface-container' : 'border-outline'
+                    } p-12 text-center transition-colors`}
+                  >
+                    <Icon name="cloud_upload" size="xl" className="text-on-surface-variant mx-auto mb-4" />
+                    <div className="text-sm text-on-surface mb-2">
+                      Drag & drop your HeyGen avatar MP4 here
+                    </div>
+                    <div className="text-xs text-on-surface-variant mb-4">or</div>
+                    <label>
+                      <Button type="button" variant="secondary" size="sm">
+                        Select File
+                      </Button>
+                      <input
+                        type="file"
+                        accept="video/mp4,video/quicktime"
+                        onChange={handleAvatarSelect}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                )}
+                <p className="mt-3 text-sm text-on-surface-variant leading-relaxed">
+                  Upload the avatar video you created in HeyGen using this script. Make sure it's exported as MP4 with 48kHz audio.
+                </p>
+              </div>
+
               {error && (
-                <div className="px-4 py-3 bg-red-900/20 border-l-4 border-red-500 text-red-400">
+                <div className="px-4 py-3 bg-red-900/20 border-l-4 border-red-500 text-red-400 rounded">
                   {error}
                 </div>
               )}
             </div>
           </Card>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 pb-6">
             <Button
               type="submit"
               variant="primary"
               disabled={submitting}
               className="flex-1"
             >
-              {submitting ? 'CREATING JOB...' : 'CREATE BROADCAST'}
+              {submitting ? 'Creating Job...' : 'Create Broadcast'}
             </Button>
             <Button
               type="button"
@@ -124,7 +228,7 @@ In other news, tensions continue to rise in Eastern Europe as diplomatic talks b
               onClick={() => router.back()}
               disabled={submitting}
             >
-              CANCEL
+              Cancel
             </Button>
           </div>
         </form>
