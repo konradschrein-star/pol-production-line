@@ -63,13 +63,14 @@ export async function POST(request: NextRequest) {
       },
       { status: 201 }
     );
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('❌ [API] Error creating job:', error);
 
     return NextResponse.json(
       {
         error: 'Failed to create job',
-        details: error.message,
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
       },
       { status: 500 }
     );

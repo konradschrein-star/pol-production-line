@@ -60,7 +60,7 @@ export async function POST(
       if (!['http:', 'https:'].includes(urlObj.protocol)) {
         throw new Error('Invalid URL protocol');
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`❌ [API] Invalid URL: ${heygenUrl}`);
       return NextResponse.json(
         { error: 'Invalid URL' },
@@ -103,7 +103,7 @@ export async function POST(
           stdio: 'ignore'
         }).unref();
       }
-    } catch (error) {
+    } catch (error: unknown) {
       console.error(`⚠️ [API] Browser launch error:`, error);
       // Don't fail the request - continue anyway
     }
@@ -125,13 +125,13 @@ export async function POST(
       ],
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('❌ [API] Error launching browser:', error);
 
     return NextResponse.json(
       {
         error: 'Failed to launch browser',
-        details: error.message,
+        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

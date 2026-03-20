@@ -7,12 +7,13 @@ interface SelectOption {
 
 interface SelectProps {
   value: string;
-  onChange: (value: string) => void;
-  options: SelectOption[];
+  onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void;
+  options?: SelectOption[];
   placeholder?: string;
   disabled?: boolean;
   error?: string;
   className?: string;
+  children?: React.ReactNode;
 }
 
 export function Select({
@@ -23,11 +24,12 @@ export function Select({
   disabled = false,
   error,
   className = '',
+  children,
 }: SelectProps) {
   return (
     <select
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={onChange}
       disabled={disabled}
       className={`
         w-full bg-surface-container-lowest text-on-surface
@@ -45,7 +47,7 @@ export function Select({
           {placeholder}
         </option>
       )}
-      {options.map((option) => (
+      {children || options?.map((option) => (
         <option key={option.value} value={option.value}>
           {option.label}
         </option>

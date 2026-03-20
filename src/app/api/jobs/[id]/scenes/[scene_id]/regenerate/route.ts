@@ -70,13 +70,13 @@ export async function POST(
       status: 'pending',
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('❌ [API] Error regenerating scene:', error);
 
     return NextResponse.json(
       {
         error: 'Failed to regenerate scene',
-        details: error.message,
+        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

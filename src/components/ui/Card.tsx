@@ -4,9 +4,10 @@ interface CardProps {
   children: React.ReactNode;
   variant?: 'default' | 'low' | 'high' | 'bright';
   className?: string;
+  onClick?: (e: React.MouseEvent<HTMLDivElement>) => void;
 }
 
-export function Card({ children, variant = 'default', className = '' }: CardProps) {
+export function Card({ children, variant = 'default', className = '', onClick }: CardProps) {
   // Surface elevation via background shifts (no borders)
   const variantStyles = {
     default: 'bg-surface-container',
@@ -16,7 +17,10 @@ export function Card({ children, variant = 'default', className = '' }: CardProp
   };
 
   return (
-    <div className={`${variantStyles[variant]} ${className}`}>
+    <div
+      className={`${variantStyles[variant]} ${className}`}
+      onClick={onClick}
+    >
       {children}
     </div>
   );

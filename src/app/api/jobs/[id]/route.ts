@@ -45,13 +45,13 @@ export async function GET(
       scenes,
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('❌ [API] Error fetching job:', error);
 
     return NextResponse.json(
       {
         error: 'Failed to fetch job',
-        details: error.message,
+        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

@@ -37,9 +37,10 @@ export class GoogleProvider implements AIProvider {
       console.log(`✅ [Google] Analyzed script: ${validated.scenes.length} scenes generated`);
 
       return validated;
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ [Google] Analysis failed:', error);
-      throw new Error(`Google analysis failed: ${error.message}`);
+      throw new Error(`Google analysis failed: ${errorMessage}`);
     }
   }
 }

@@ -50,9 +50,10 @@ export class ClaudeProvider implements AIProvider {
       console.log(`✅ [Claude] Analyzed script: ${validated.scenes.length} scenes generated`);
 
       return validated;
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ [Claude] Analysis failed:', error);
-      throw new Error(`Claude analysis failed: ${error.message}`);
+      throw new Error(`Claude analysis failed: ${errorMessage}`);
     }
   }
 }

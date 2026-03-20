@@ -44,9 +44,10 @@ export class GroqProvider implements AIProvider {
       console.log(`✅ [Groq] Analyzed script: ${validated.scenes.length} scenes generated`);
 
       return validated;
-    } catch (error) {
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('❌ [Groq] Analysis failed:', error);
-      throw new Error(`Groq analysis failed: ${error.message}`);
+      throw new Error(`Groq analysis failed: ${errorMessage}`);
     }
   }
 }

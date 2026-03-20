@@ -134,13 +134,14 @@ export async function POST(
       file_size: avatarFile.size,
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     console.error('❌ [API] Error compiling job:', error);
 
     return NextResponse.json(
       {
         error: 'Failed to compile job',
-        details: error.message,
+        details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
       },
       { status: 500 }
     );

@@ -59,13 +59,13 @@ export async function PATCH(
       ticker_headline,
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('❌ [API] Error updating scene:', error);
 
     return NextResponse.json(
       {
         error: 'Failed to update scene',
-        details: error.message,
+        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

@@ -91,13 +91,13 @@ export async function POST(
       file_size: file.size,
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('❌ [API] Error uploading image:', error);
 
     return NextResponse.json(
       {
         error: 'Failed to upload image',
-        details: error.message,
+        details: error instanceof Error ? error.message : 'Unknown error',
       },
       { status: 500 }
     );

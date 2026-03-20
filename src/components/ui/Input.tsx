@@ -2,12 +2,13 @@ import React from 'react';
 
 interface InputProps {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
   placeholder?: string;
   type?: 'text' | 'password' | 'email';
   disabled?: boolean;
   error?: string;
   className?: string;
+  maxLength?: number;
 }
 
 export function Input({
@@ -18,14 +19,16 @@ export function Input({
   disabled = false,
   error,
   className = '',
+  maxLength,
 }: InputProps) {
   return (
     <input
       type={type}
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onChange={onChange}
       placeholder={placeholder}
       disabled={disabled}
+      maxLength={maxLength}
       className={`
         w-full bg-surface-container-lowest text-on-surface
         border-b-2 ${error ? 'border-error' : 'border-outline'}
