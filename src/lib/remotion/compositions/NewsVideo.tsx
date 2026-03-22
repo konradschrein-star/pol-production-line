@@ -6,18 +6,24 @@ import {
 } from 'remotion';
 import { Scene } from '../components/Scene';
 import { AvatarOverlay } from '../components/AvatarOverlay';
-import { Ticker } from '../components/Ticker';
-import { calculateScenePacing, SceneTiming } from '../pacing';
+import { Subtitles } from '../components/Subtitles';
+import { NewsTickerOverlay } from '../components/NewsTickerOverlay';
+import { calculateScenePacing, calculateTranscriptBasedPacing, SceneTiming } from '../pacing';
+import { WordTimestamp } from '../types';
 
 export interface NewsVideoProps {
   avatarMp4Url: string;
   avatarDurationSeconds: number;
+  avatarAspectRatio?: number; // width/height (e.g., 0.5625 for 9:16)
+  avatarWidth?: number;
+  avatarHeight?: number;
   scenes: Array<{
     id: string;
     image_url: string;
     ticker_headline: string;
     scene_order: number;
   }>;
+  wordTimestamps?: WordTimestamp[];
 }
 
 /**
@@ -27,12 +33,25 @@ export interface NewsVideoProps {
 export const NewsVideo: React.FC<NewsVideoProps> = ({
   avatarMp4Url,
   avatarDurationSeconds,
+  avatarAspectRatio,
+  avatarWidth,
+  avatarHeight,
   scenes,
+  wordTimestamps,
 }) => {
   const { fps } = useVideoConfig();
 
-  // Calculate scene pacing
-  const pacing = calculateScenePacing(avatarDurationSeconds, scenes.length, fps);
+  // Calculate scene pacing (transcript-based if available, time-based fallback)
+  const pacing = wordTimestamps && wordTimestamps.length > 0
+    ? calculateTranscriptBasedPacing({
+        avatarDurationSeconds,
+        wordTimestamps,
+        sceneCount: scenes.length,
+        fps,
+      })
+    : calculateScenePacing(avatarDurationSeconds, scenes.length, fps);
+
+  console.log(`   Pacing mode: ${wordTimestamps ? 'TRANSCRIPT-BASED' : 'TIME-BASED (fallback)'}`);
 
   // Sort scenes by order
   const sortedScenes = [...scenes].sort((a, b) => a.scene_order - b.scene_order);
@@ -48,6 +67,7 @@ export const NewsVideo: React.FC<NewsVideoProps> = ({
 
   console.log(`\n🎬 [NewsVideo] Rendering composition:`);
   console.log(`   Total duration: ${avatarDurationSeconds}s (${pacing.totalDurationInFrames} frames)`);
+  console.log(`   Avatar aspect ratio: ${avatarAspectRatio?.toFixed(4) || 'not provided'} (${avatarWidth}x${avatarHeight})`);
   console.log(`   Scenes: ${scenes.length}`);
   console.log(`   Hook scenes: ${pacing.hookScenes} @ 1.5s`);
   console.log(`   Body scenes: ${pacing.bodyScenes}`);
@@ -73,17 +93,21 @@ export const NewsVideo: React.FC<NewsVideoProps> = ({
       {/* Avatar Overlay (full duration) */}
       <AvatarOverlay
         avatarMp4Url={avatarMp4Url}
+        avatarAspectRatio={avatarAspectRatio}
         position="bottom-right"
-        size={{ width: '25%', height: '35%' }}
       />
 
-      {/* Scrolling Ticker (full duration) */}
-      <Ticker
+      {/* Subtitles (only if word timestamps available) */}
+      {wordTimestamps && wordTimestamps.length > 0 && (
+        <Subtitles wordTimestamps={wordTimestamps} wordsPerLine={6} />
+      )}
+
+      {/* Professional News Ticker Overlay (full duration) */}
+      <NewsTickerOverlay
         headlines={headlines}
-        speed={2}
-        backgroundColor="#353535"
-        textColor="#FFFFFF"
-        separator=" • "
+        channelName="OBSIDIAN NEWS"
+        speed={3}
+        accentColor="#E63946"
       />
     </AbsoluteFill>
   );

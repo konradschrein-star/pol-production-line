@@ -2,9 +2,11 @@
  * Pacing Algorithm for Video Composition
  *
  * Critical Logic:
- * - Hook (0-15s): Rapid 1.5s image transitions (rigid timing)
- * - Body (15s+): 1 image per sentence (dynamic, based on remaining duration)
+ * - Hook (0-30% of duration): 1 image per word (rapid pacing)
+ * - Body (30-100%): 1 image per 1-2 sentences (slower, natural pacing)
  */
+
+import { WordTimestamp, SentenceGroup, groupIntoSentences } from './types';
 
 export interface SceneTiming {
   sceneId: string;
@@ -19,6 +21,13 @@ export interface PacingResult {
   sceneTiming: SceneTiming[];
   hookScenes: number;
   bodyScenes: number;
+}
+
+export interface TranscriptPacingInput {
+  avatarDurationSeconds: number;
+  wordTimestamps: WordTimestamp[];
+  sceneCount: number;
+  fps?: number;
 }
 
 /**
@@ -162,29 +171,227 @@ export function calculateScenePacing(
 }
 
 /**
- * Get audio duration from MP4 file
- * Uses Remotion's getVideoMetadata utility
+ * Calculate scene pacing based on transcript word/sentence timing
  *
- * @param videoUrl - URL or path to video file
- * @returns Duration in seconds
+ * Hook phase (0-30% of duration): 1 image per word (rapid pacing)
+ * Body phase (30-100%): 1 image per 1-2 sentences (slower, natural pacing)
  */
-export async function getVideoDuration(videoUrl: string): Promise<number> {
-  try {
-    // Dynamic import to avoid bundling issues
-    const { getVideoMetadata } = await import('@remotion/media-utils');
+export function calculateTranscriptBasedPacing(
+  input: TranscriptPacingInput
+): PacingResult {
+  const { avatarDurationSeconds, wordTimestamps, sceneCount, fps = 30 } = input;
 
-    const metadata = await getVideoMetadata(videoUrl);
+  console.log(`\n📐 [Pacing] Calculating transcript-based scene timing...`);
+  console.log(`   Avatar duration: ${avatarDurationSeconds}s`);
+  console.log(`   Scene count: ${sceneCount}`);
+  console.log(`   Word count: ${wordTimestamps.length}`);
+  console.log(`   FPS: ${fps}`);
 
-    console.log(`🎥 [Pacing] Video metadata:`);
-    console.log(`   Duration: ${metadata.durationInSeconds}s`);
-    console.log(`   Dimensions: ${metadata.width}x${metadata.height}`);
-
-    return metadata.durationInSeconds;
-  } catch (error) {
-    console.error(`❌ [Pacing] Failed to get video duration:`, error);
-    throw new Error(`Failed to get video duration: ${error instanceof Error ? error.message : String(error)}`);
+  // Fallback: No transcript data, use time-based pacing
+  if (!wordTimestamps || wordTimestamps.length === 0) {
+    console.warn(`⚠️  [Pacing] No word timestamps, falling back to time-based pacing`);
+    return calculateScenePacing(avatarDurationSeconds, sceneCount, fps);
   }
+
+  // Phase boundaries
+  const hookEndTime = avatarDurationSeconds * 0.3; // 30% mark
+
+  console.log(`   Hook phase: 0s - ${hookEndTime.toFixed(1)}s (30%)`);
+
+  // Separate words into hook and body phases
+  const hookWords = wordTimestamps.filter(w => w.start < hookEndTime);
+  const bodyWords = wordTimestamps.filter(w => w.start >= hookEndTime);
+
+  console.log(`   Hook words: ${hookWords.length}`);
+  console.log(`   Body words: ${bodyWords.length}`);
+
+  // Group body words into sentences
+  const bodySentences = groupIntoSentences(bodyWords);
+
+  console.log(`   Body sentences: ${bodySentences.length}`);
+
+  // Distribute scenes between hook and body
+  const hookSceneRatio = hookEndTime / avatarDurationSeconds;
+  const targetHookScenes = Math.ceil(sceneCount * hookSceneRatio);
+  const targetBodyScenes = sceneCount - targetHookScenes;
+
+  console.log(`   Target hook scenes: ${targetHookScenes} (${(hookSceneRatio * 100).toFixed(0)}%)`);
+  console.log(`   Target body scenes: ${targetBodyScenes}`);
+
+  const sceneTiming: SceneTiming[] = [];
+
+  // ===== HOOK PHASE: 1 image per word (or multiple images per word if more scenes than words) =====
+  if (hookWords.length > 0) {
+    const scenesPerWord = targetHookScenes / hookWords.length;
+
+    console.log(`   Hook pacing: ${scenesPerWord.toFixed(2)} scenes per word`);
+
+    if (scenesPerWord >= 1) {
+      // More scenes than words: Distribute scenes across words with remainder tracking
+      let sceneIdx = 0;
+      let remainder = 0;
+
+      for (let wordIdx = 0; wordIdx < hookWords.length && sceneIdx < targetHookScenes; wordIdx++) {
+        const word = hookWords[wordIdx];
+        const wordDuration = word.end - word.start;
+
+        // Calculate scenes for this word using remainder to ensure we use all scenes
+        const scenesForThisWordFloat = scenesPerWord + remainder;
+        const scenesForThisWord = Math.floor(scenesForThisWordFloat);
+        remainder = scenesForThisWordFloat - scenesForThisWord;
+
+        // Ensure at least 1 scene and don't exceed target
+        const actualScenes = Math.min(
+          Math.max(1, scenesForThisWord),
+          targetHookScenes - sceneIdx
+        );
+
+        // Divide word duration across scenes
+        for (let i = 0; i < actualScenes; i++) {
+          const sceneDuration = wordDuration / actualScenes;
+          const sceneStart = word.start + (i * sceneDuration);
+
+          sceneTiming.push({
+            sceneId: `scene_${sceneIdx}`,
+            startFrame: Math.round(sceneStart * fps),
+            durationInFrames: Math.round(sceneDuration * fps),
+            durationInSeconds: sceneDuration,
+          });
+
+          sceneIdx++;
+        }
+      }
+    } else {
+      // More words than scenes: 1 scene per N words
+      const wordsPerScene = Math.ceil(hookWords.length / targetHookScenes);
+
+      console.log(`   Hook pacing: ${wordsPerScene} words per scene`);
+
+      for (let sceneIdx = 0; sceneIdx < targetHookScenes; sceneIdx++) {
+        const startWordIdx = sceneIdx * wordsPerScene;
+        const endWordIdx = Math.min(startWordIdx + wordsPerScene, hookWords.length);
+
+        if (startWordIdx >= hookWords.length) break;
+
+        const firstWord = hookWords[startWordIdx];
+        const lastWord = hookWords[endWordIdx - 1];
+
+        const sceneStart = firstWord.start;
+        const sceneEnd = lastWord.end;
+        const sceneDuration = sceneEnd - sceneStart;
+
+        sceneTiming.push({
+          sceneId: `scene_${sceneIdx}`,
+          startFrame: Math.round(sceneStart * fps),
+          durationInFrames: Math.round(sceneDuration * fps),
+          durationInSeconds: sceneDuration,
+        });
+      }
+    }
+  }
+
+  // ===== BODY PHASE: 1 image per 1-2 sentences =====
+  if (bodySentences.length > 0 && targetBodyScenes > 0) {
+    const sentencesPerScene = bodySentences.length / targetBodyScenes;
+
+    console.log(`   Body pacing: ${sentencesPerScene.toFixed(2)} sentences per scene`);
+
+    if (sentencesPerScene >= 1) {
+      // More sentences than scenes: Combine sentences
+      const numSentencesPerScene = Math.ceil(sentencesPerScene);
+
+      for (let sceneIdx = 0; sceneIdx < targetBodyScenes; sceneIdx++) {
+        const startSentenceIdx = sceneIdx * numSentencesPerScene;
+        const endSentenceIdx = Math.min(startSentenceIdx + numSentencesPerScene, bodySentences.length);
+
+        if (startSentenceIdx >= bodySentences.length) break;
+
+        const firstSentence = bodySentences[startSentenceIdx];
+        const lastSentence = bodySentences[endSentenceIdx - 1];
+
+        const sceneStart = firstSentence.start;
+        const sceneEnd = lastSentence.end;
+        const sceneDuration = sceneEnd - sceneStart;
+
+        sceneTiming.push({
+          sceneId: `scene_${targetHookScenes + sceneIdx}`,
+          startFrame: Math.round(sceneStart * fps),
+          durationInFrames: Math.round(sceneDuration * fps),
+          durationInSeconds: sceneDuration,
+        });
+      }
+    } else {
+      // More scenes than sentences: Split sentences
+      const scenesPerSentence = Math.ceil(1 / sentencesPerScene);
+
+      for (let sentenceIdx = 0; sentenceIdx < bodySentences.length; sentenceIdx++) {
+        const sentence = bodySentences[sentenceIdx];
+        const sentenceDuration = sentence.end - sentence.start;
+
+        for (let i = 0; i < scenesPerSentence; i++) {
+          const sceneDuration = sentenceDuration / scenesPerSentence;
+          const sceneStart = sentence.start + (i * sceneDuration);
+
+          sceneTiming.push({
+            sceneId: `scene_${sceneTiming.length}`,
+            startFrame: Math.round(sceneStart * fps),
+            durationInFrames: Math.round(sceneDuration * fps),
+            durationInSeconds: sceneDuration,
+          });
+
+          if (sceneTiming.length >= sceneCount) break;
+        }
+
+        if (sceneTiming.length >= sceneCount) break;
+      }
+    }
+  }
+
+  // ===== CRITICAL FIX: Ensure continuous coverage with NO gaps =====
+  // Recalculate to eliminate black frames between scenes
+  const continuousSceneTiming: SceneTiming[] = [];
+  const totalFrames = Math.round(avatarDurationSeconds * fps);
+  let currentFrame = 0;
+
+  for (let i = 0; i < Math.min(sceneTiming.length, sceneCount); i++) {
+    // Calculate duration for this scene, ensuring we fill the entire video
+    const remainingFrames = totalFrames - currentFrame;
+    const remainingScenes = sceneCount - i;
+
+    // Distribute remaining frames evenly across remaining scenes
+    const durationInFrames = Math.round(remainingFrames / remainingScenes);
+
+    continuousSceneTiming.push({
+      sceneId: `scene_${i}`,
+      startFrame: currentFrame,
+      durationInFrames: durationInFrames,
+      durationInSeconds: durationInFrames / fps,
+    });
+
+    currentFrame += durationInFrames;
+  }
+
+  // Adjust last scene to fill exactly to the end (handle rounding)
+  if (continuousSceneTiming.length > 0) {
+    const lastScene = continuousSceneTiming[continuousSceneTiming.length - 1];
+    lastScene.durationInFrames = totalFrames - lastScene.startFrame;
+    lastScene.durationInSeconds = lastScene.durationInFrames / fps;
+  }
+
+  console.log(`✅ [Pacing] Calculated ${continuousSceneTiming.length} scenes (continuous coverage)`);
+  console.log(`   Total duration: ${avatarDurationSeconds}s (${totalFrames} frames)`);
+  console.log(`   Coverage: Frame 0 to ${totalFrames} (NO GAPS)`);
+
+  return {
+    totalDurationInFrames: totalFrames,
+    totalDurationInSeconds: avatarDurationSeconds,
+    sceneTiming: continuousSceneTiming,
+    hookScenes: targetHookScenes,
+    bodyScenes: continuousSceneTiming.length - targetHookScenes,
+  };
 }
+
+// Note: getVideoDuration() moved to video-utils.ts (server-side only)
 
 /**
  * Example usage and test cases

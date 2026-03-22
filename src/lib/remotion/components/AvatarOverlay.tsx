@@ -1,30 +1,63 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   AbsoluteFill,
   Video,
+  staticFile,
+  useVideoConfig,
 } from 'remotion';
 
 export interface AvatarOverlayProps {
   avatarMp4Url: string;
+  avatarAspectRatio?: number; // width/height (e.g., 0.5625 for 9:16, 1.0 for 1:1, 1.777 for 16:9)
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
-  size?: {
-    width: string;
-    height: string;
-  };
+  heightPercent?: number; // Height as percentage of composition (default: 40%)
 }
 
 /**
  * Avatar Overlay Component
- * Displays the HeyGen avatar video in a rounded corner box with drop shadow
+ *
+ * Displays the avatar video with proper aspect ratio preservation.
+ * The container dimensions are calculated to match the source video's aspect ratio.
+ *
+ * Supported aspect ratios:
+ * - 16:9 (horizontal: 1.777)
+ * - 9:16 (vertical: 0.5625)
+ * - 1:1 (square: 1.0)
+ * - 4:3 (standard: 1.333)
+ * - Any custom ratio
  */
 export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
   avatarMp4Url,
+  avatarAspectRatio,
   position = 'bottom-right',
-  size = {
-    width: '25%',
-    height: '35%',
-  },
+  heightPercent = 40,
 }) => {
+  const { width: compositionWidth, height: compositionHeight } = useVideoConfig();
+
+  // Calculate container size to match avatar aspect ratio
+  const containerSize = useMemo(() => {
+    // Default to 9:16 if not provided (for backwards compatibility)
+    const aspectRatio = avatarAspectRatio ?? 0.5625;
+
+    // Calculate height in pixels
+    const heightPx = compositionHeight * (heightPercent / 100);
+
+    // Calculate width to maintain aspect ratio
+    const widthPx = heightPx * aspectRatio;
+
+    // Convert to percentages
+    const widthPercent = (widthPx / compositionWidth) * 100;
+
+    console.log(`📐 [AvatarOverlay] Container dimensions:`);
+    console.log(`   Composition: ${compositionWidth}x${compositionHeight}`);
+    console.log(`   Avatar aspect ratio: ${aspectRatio.toFixed(4)}`);
+    console.log(`   Container: ${widthPx.toFixed(0)}x${heightPx.toFixed(0)}px (${widthPercent.toFixed(2)}% x ${heightPercent}%)`);
+
+    return {
+      width: `${widthPercent}%`,
+      height: `${heightPercent}%`,
+    };
+  }, [avatarAspectRatio, compositionWidth, compositionHeight, heightPercent]);
   // Position styles
   const positionStyles: Record<string, React.CSSProperties> = {
     'bottom-right': {
@@ -51,8 +84,8 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
         ...positionStyles[position],
         top: 'auto',
         left: 'auto',
-        width: size.width,
-        height: size.height,
+        width: containerSize.width,
+        height: containerSize.height,
         pointerEvents: 'none',
       }}
     >
@@ -68,11 +101,11 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
         }}
       >
         <Video
-          src={avatarMp4Url}
+          src={avatarMp4Url.startsWith('/') ? staticFile(avatarMp4Url) : avatarMp4Url}
           style={{
             width: '100%',
             height: '100%',
-            objectFit: 'cover',
+            objectFit: 'cover', // Fill container completely while maintaining aspect ratio
           }}
         />
       </div>
