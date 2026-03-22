@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { Badge } from '@/components/ui/Badge';
 import { updateScene, regenerateScene, uploadSceneImage } from '@/lib/utils/api';
+import { WhiskReferenceImages } from '@/lib/whisk/types';
 
 interface Scene {
   id: string;
@@ -16,6 +17,8 @@ interface Scene {
   ticker_headline: string;
   image_url?: string;
   generation_status: string;
+  reference_images?: WhiskReferenceImages;
+  generation_params?: any;
 }
 
 interface SceneCardProps {
@@ -30,7 +33,12 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [showReferences, setShowReferences] = useState(false);
+  const [uploadingRef, setUploadingRef] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const subjectInput = useRef<HTMLInputElement>(null);
+  const sceneInputRef = useRef<HTMLInputElement>(null);
+  const styleInput = useRef<HTMLInputElement>(null);
 
   const handleSave = async () => {
     setSaving(true);
@@ -74,6 +82,55 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
       console.error('Failed to upload image:', error);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const handleRefUpload = async (
+    type: 'subject' | 'scene' | 'style',
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingRef(type);
+
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('type', type);
+
+      const res = await fetch(
+        `/api/jobs/${scene.job_id}/scenes/${scene.id}/references`,
+        { method: 'POST', body: formData }
+      );
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || 'Upload failed');
+      }
+
+      onUpdate(); // Refresh scene data
+    } catch (err: any) {
+      alert(`Failed to upload ${type}: ${err.message}`);
+    } finally {
+      setUploadingRef(null);
+    }
+  };
+
+  const handleRefRemove = async (type: 'subject' | 'scene' | 'style') => {
+    if (!confirm(`Remove ${type} reference?`)) return;
+
+    try {
+      const res = await fetch(
+        `/api/jobs/${scene.job_id}/scenes/${scene.id}/references?type=${type}`,
+        { method: 'DELETE' }
+      );
+
+      if (!res.ok) throw new Error('Delete failed');
+
+      onUpdate();
+    } catch (err) {
+      alert(`Failed to remove ${type} reference`);
     }
   };
 
@@ -232,6 +289,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
             onClick={handleRegenerate}
             disabled={regenerating || scene.generation_status === 'generating'}
             className="flex-1"
+            title="Re-queue scene for generation. ⚠️ Warning: >5 regenerations in 5 minutes may trigger ban detection"
           >
             <Icon name="refresh" size="sm" />
             {regenerating ? 'Regenerating...' : 'Regenerate'}
@@ -247,6 +305,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
                 e.preventDefault();
                 fileInputRef.current?.click();
               }}
+              title="Upload custom image (PNG, JPG, WebP, max 10MB, 16:9 recommended)"
             >
               <Icon name="upload" size="sm" />
               {uploading ? 'Uploading...' : 'Upload'}
@@ -260,6 +319,178 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
             />
           </label>
         </div>
+      </div>
+
+      {/* Reference Images Section */}
+      <div className="border-t border-outline-variant/30 px-6 pb-6">
+        <button
+          onClick={() => setShowReferences(!showReferences)}
+          className="flex items-center justify-between w-full py-3 text-sm font-medium hover:text-primary transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-on-surface-variant">Reference Images</span>
+            <a
+              href="/docs/USER_GUIDE.md#using-reference-images"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Learn about subject, scene, and style references"
+              className="text-on-surface-variant hover:text-primary transition-colors"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <Icon name="help_outline" size="sm" />
+            </a>
+          </div>
+          <div className="flex items-center gap-2">
+            {scene.reference_images && Object.keys(scene.reference_images).length > 0 && (
+              <Badge variant="success" size="sm">
+                {Object.keys(scene.reference_images).length} active
+              </Badge>
+            )}
+            <Icon
+              name={showReferences ? "expand_less" : "expand_more"}
+              size="sm"
+            />
+          </div>
+        </button>
+
+        {showReferences && (
+          <div className="grid grid-cols-3 gap-3 mt-3">
+            {/* Subject Reference */}
+            <div>
+              <label
+                className="block text-xs font-medium text-on-surface-variant mb-2"
+                title="Subject: Person, object, or character to feature consistently"
+              >
+                Subject
+              </label>
+              {scene.reference_images?.subject ? (
+                <div className="relative group">
+                  <img
+                    src={`/api/files?path=${encodeURIComponent(scene.reference_images.subject)}`}
+                    alt="Subject ref"
+                    className="w-full h-20 object-cover rounded-lg border border-outline"
+                  />
+                  <button
+                    onClick={() => handleRefRemove('subject')}
+                    className="absolute top-1 right-1 bg-error/90 text-white p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Icon name="close" size="xs" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={uploadingRef === 'subject'}
+                    onClick={() => subjectInput.current?.click()}
+                    className="w-full h-20"
+                  >
+                    <Icon name="add_photo_alternate" size="sm" />
+                    {uploadingRef === 'subject' ? 'Uploading...' : 'Add'}
+                  </Button>
+                  <input
+                    ref={subjectInput}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleRefUpload('subject', e)}
+                    className="hidden"
+                  />
+                </>
+              )}
+            </div>
+
+            {/* Scene Reference */}
+            <div>
+              <label
+                className="block text-xs font-medium text-on-surface-variant mb-2"
+                title="Scene: Background, setting, or location style"
+              >
+                Scene
+              </label>
+              {scene.reference_images?.scene ? (
+                <div className="relative group">
+                  <img
+                    src={`/api/files?path=${encodeURIComponent(scene.reference_images.scene)}`}
+                    alt="Scene ref"
+                    className="w-full h-20 object-cover rounded-lg border border-outline"
+                  />
+                  <button
+                    onClick={() => handleRefRemove('scene')}
+                    className="absolute top-1 right-1 bg-error/90 text-white p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Icon name="close" size="xs" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={uploadingRef === 'scene'}
+                    onClick={() => sceneInputRef.current?.click()}
+                    className="w-full h-20"
+                  >
+                    <Icon name="add_photo_alternate" size="sm" />
+                    {uploadingRef === 'scene' ? 'Uploading...' : 'Add'}
+                  </Button>
+                  <input
+                    ref={sceneInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleRefUpload('scene', e)}
+                    className="hidden"
+                  />
+                </>
+              )}
+            </div>
+
+            {/* Style Reference */}
+            <div>
+              <label
+                className="block text-xs font-medium text-on-surface-variant mb-2"
+                title="Style: Artistic style, mood, or aesthetic direction"
+              >
+                Style
+              </label>
+              {scene.reference_images?.style ? (
+                <div className="relative group">
+                  <img
+                    src={`/api/files?path=${encodeURIComponent(scene.reference_images.style)}`}
+                    alt="Style ref"
+                    className="w-full h-20 object-cover rounded-lg border border-outline"
+                  />
+                  <button
+                    onClick={() => handleRefRemove('style')}
+                    className="absolute top-1 right-1 bg-error/90 text-white p-1 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <Icon name="close" size="xs" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={uploadingRef === 'style'}
+                    onClick={() => styleInput.current?.click()}
+                    className="w-full h-20"
+                  >
+                    <Icon name="add_photo_alternate" size="sm" />
+                    {uploadingRef === 'style' ? 'Uploading...' : 'Add'}
+                  </Button>
+                  <input
+                    ref={styleInput}
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => handleRefUpload('style', e)}
+                    className="hidden"
+                  />
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </Card>
   );

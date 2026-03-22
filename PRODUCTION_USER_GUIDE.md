@@ -1,7 +1,21 @@
-# Obsidian News Desk - Production User Guide
+# ⚠️ DEPRECATED - See New Documentation
+
+> **This documentation has been consolidated into the new docs/ folder.**
+>
+> **Please use instead:**
+> - **[docs/QUICK_START.md](docs/QUICK_START.md)** - Getting started guide
+> - **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)** - Complete workflow guide
+> - **[docs/REFERENCE.md](docs/REFERENCE.md)** - Advanced reference
+>
+> **Last Updated:** March 22, 2026
+
+---
+
+# Obsidian News Desk - Production User Guide (ARCHIVED)
 
 **Version:** 1.0
 **Last Updated:** March 20, 2026
+**Status:** ⚠️ Archived - Content moved to docs/ folder
 
 This guide will walk you through the complete workflow for producing news broadcast videos using the Obsidian News Desk system. No technical knowledge required - just follow these steps.
 

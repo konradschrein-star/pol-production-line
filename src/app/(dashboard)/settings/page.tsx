@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
+import { Icon } from '@/components/ui/Icon';
 
 export default function SettingsPage() {
   // AI Provider Settings
@@ -26,9 +27,18 @@ export default function SettingsPage() {
   const [defaultBrowser, setDefaultBrowser] = useState('edge');
   const [autoWhiskExtId, setAutoWhiskExtId] = useState('');
 
+  // Avatar Generation Settings
+  const [avatarMode, setAvatarMode] = useState('manual');
+  const [heygenProfilePath, setHeygenProfilePath] = useState('');
+  const [pythonExecutable, setPythonExecutable] = useState('python');
+
   // Remotion Settings
   const [remotionTimeout, setRemotionTimeout] = useState('300000');
   const [remotionConcurrency, setRemotionConcurrency] = useState('2');
+
+  // Whisk Settings
+  const [whiskToken, setWhiskToken] = useState('');
+  const [whiskModel, setWhiskModel] = useState('IMAGEN_3_5');
 
   // UI State
   const [loading, setLoading] = useState(true);
@@ -76,8 +86,13 @@ export default function SettingsPage() {
       setRedisPassword(data.REDIS_PASSWORD || '');
       setDefaultBrowser(data.DEFAULT_BROWSER || 'edge');
       setAutoWhiskExtId(data.AUTO_WHISK_EXTENSION_ID || 'gedfnhdibkfgacmkbjgpfjihacalnlpn');
+      setAvatarMode(data.AVATAR_MODE || 'manual');
+      setHeygenProfilePath(data.HEYGEN_PROFILE_PATH || './integrations/heygen-automation/heygen-chrome-profile');
+      setPythonExecutable(data.PYTHON_EXECUTABLE || 'python');
       setRemotionTimeout(data.REMOTION_TIMEOUT_MS || '300000');
       setRemotionConcurrency(data.REMOTION_CONCURRENCY || '2');
+      setWhiskToken(data.WHISK_API_TOKEN || '');
+      setWhiskModel(data.WHISK_IMAGE_MODEL || 'IMAGEN_3_5');
 
       setLoading(false);
     } catch (error: unknown) {
@@ -113,8 +128,13 @@ export default function SettingsPage() {
           REDIS_PASSWORD: redisPassword,
           DEFAULT_BROWSER: defaultBrowser,
           AUTO_WHISK_EXTENSION_ID: autoWhiskExtId,
+          AVATAR_MODE: avatarMode,
+          HEYGEN_PROFILE_PATH: heygenProfilePath,
+          PYTHON_EXECUTABLE: pythonExecutable,
           REMOTION_TIMEOUT_MS: remotionTimeout,
           REMOTION_CONCURRENCY: remotionConcurrency,
+          WHISK_API_TOKEN: whiskToken,
+          WHISK_IMAGE_MODEL: whiskModel,
         }),
       });
 
@@ -204,8 +224,17 @@ export default function SettingsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+              <label className="flex items-center gap-2 text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
                 Anthropic API Key
+                <a
+                  href="https://console.anthropic.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Get your Claude API key from Anthropic Console"
+                  className="text-on-surface-variant hover:text-primary transition-colors"
+                >
+                  <Icon name="help_outline" size="sm" />
+                </a>
               </label>
               <Input
                 type="password"
@@ -214,13 +243,22 @@ export default function SettingsPage() {
                 placeholder="sk-ant-api03-..."
               />
               <p className="text-xs text-on-surface-variant mt-2">
-                Get your key at: <a href="https://console.anthropic.com" target="_blank" className="underline">console.anthropic.com</a>
+                Get your key at: <a href="https://console.anthropic.com" target="_blank" rel="noopener noreferrer" className="underline">console.anthropic.com</a>
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+              <label className="flex items-center gap-2 text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
                 Google AI API Key
+                <a
+                  href="https://ai.google.dev/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Get your free Google AI API key"
+                  className="text-on-surface-variant hover:text-primary transition-colors"
+                >
+                  <Icon name="help_outline" size="sm" />
+                </a>
               </label>
               <Input
                 type="password"
@@ -229,13 +267,22 @@ export default function SettingsPage() {
                 placeholder="AIzaSy..."
               />
               <p className="text-xs text-on-surface-variant mt-2">
-                Get your key at: <a href="https://makersuite.google.com/app/apikey" target="_blank" className="underline">Google AI Studio</a>
+                Get your key at: <a href="https://makersuite.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="underline">Google AI Studio</a>
               </p>
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+              <label className="flex items-center gap-2 text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
                 Groq API Key
+                <a
+                  href="https://console.groq.com/"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Get your Groq API key from Console"
+                  className="text-on-surface-variant hover:text-primary transition-colors"
+                >
+                  <Icon name="help_outline" size="sm" />
+                </a>
               </label>
               <Input
                 type="password"
@@ -244,7 +291,7 @@ export default function SettingsPage() {
                 placeholder="gsk_..."
               />
               <p className="text-xs text-on-surface-variant mt-2">
-                Get your key at: <a href="https://console.groq.com" target="_blank" className="underline">console.groq.com</a>
+                Get your key at: <a href="https://console.groq.com" target="_blank" rel="noopener noreferrer" className="underline">console.groq.com</a>
               </p>
             </div>
           </div>
@@ -380,6 +427,170 @@ export default function SettingsPage() {
           </div>
         </Card>
 
+        {/* Avatar Generation */}
+        <Card variant="default">
+          <div className="border-b border-outline-variant px-6 py-4">
+            <h2 className="text-lg font-bold text-white uppercase tracking-wider">
+              🎭 AVATAR GENERATION
+            </h2>
+            <p className="text-sm text-on-surface-variant mt-1">
+              Choose between manual HeyGen browser launch or automated Python-based generation
+            </p>
+          </div>
+
+          <div className="p-6 space-y-6">
+            <div>
+              <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                Avatar Generation Mode
+              </label>
+              <Select
+                value={avatarMode}
+                onChange={(e) => setAvatarMode(e.target.value)}
+              >
+                <option value="manual">Manual (Default) - Launch browser, generate manually</option>
+                <option value="automated">Automated - Python browser automation (requires setup)</option>
+              </Select>
+              <p className="text-xs text-on-surface-variant mt-2">
+                Manual mode: You control HeyGen browser. Automated mode: Python script handles everything.
+              </p>
+            </div>
+
+            {avatarMode === 'automated' && (
+              <>
+                <div className="bg-yellow-900/20 border-l-4 border-yellow-500 p-4">
+                  <h4 className="font-bold text-yellow-400 mb-2">⚠️ Automated Mode Prerequisites</h4>
+                  <ul className="text-xs text-yellow-200 space-y-1">
+                    <li>• Python 3.8+ installed</li>
+                    <li>• Clone repository: <code className="bg-surface px-1">cd integrations && git clone https://github.com/marifaceless/heygen-web-automation.git heygen-automation</code></li>
+                    <li>• Install dependencies: <code className="bg-surface px-1">cd integrations/heygen-automation && pip install -r requirements.txt && playwright install chromium</code></li>
+                    <li>• One-time HeyGen login: <code className="bg-surface px-1">python setup_profile.py</code></li>
+                    <li>• Verify setup: <code className="bg-surface px-1">npm run validate:python</code></li>
+                  </ul>
+                  <p className="text-xs text-yellow-200 mt-3">
+                    See <code className="bg-surface px-1">integrations/heygen-automation/README.md</code> for full instructions.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                    HeyGen Chrome Profile Path
+                  </label>
+                  <Input
+                    type="text"
+                    value={heygenProfilePath}
+                    onChange={(e) => setHeygenProfilePath(e.target.value)}
+                    placeholder="./integrations/heygen-automation/heygen-chrome-profile"
+                  />
+                  <p className="text-xs text-on-surface-variant mt-2">
+                    Created by <code className="bg-surface px-1">setup_profile.py</code>. Contains HeyGen login session.
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                    Python Executable
+                  </label>
+                  <Input
+                    type="text"
+                    value={pythonExecutable}
+                    onChange={(e) => setPythonExecutable(e.target.value)}
+                    placeholder="python"
+                  />
+                  <p className="text-xs text-on-surface-variant mt-2">
+                    Windows: Try <code className="bg-surface px-1">python</code>, <code className="bg-surface px-1">python3</code>, or full path like <code className="bg-surface px-1">C:\Python39\python.exe</code>
+                  </p>
+                </div>
+
+                <div className="bg-blue-900/20 border-l-4 border-blue-500 p-4">
+                  <h4 className="font-bold text-blue-400 mb-2">💡 Tips for Automated Mode</h4>
+                  <ul className="text-xs text-blue-200 space-y-1">
+                    <li>• Test validation: <code className="bg-surface px-1">npm run validate:python</code></li>
+                    <li>• Check worker logs: <code className="bg-surface px-1">npm run workers</code></li>
+                    <li>• HeyGen UI changes may break automation (switch to manual if needed)</li>
+                    <li>• Average generation time: 2-5 minutes per avatar</li>
+                  </ul>
+                </div>
+              </>
+            )}
+
+            {avatarMode === 'manual' && (
+              <div className="bg-green-900/20 border-l-4 border-green-500 p-4">
+                <h4 className="font-bold text-green-400 mb-2">✅ Manual Mode (Current)</h4>
+                <p className="text-xs text-green-200">
+                  After images complete, you'll see a "LAUNCH HEYGEN BROWSER" button. Click it, generate the avatar in HeyGen web UI, then upload the .mp4 file. No Python setup required.
+                </p>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* Whisk Configuration */}
+        <Card variant="default">
+          <div className="border-b border-outline-variant px-6 py-4">
+            <h2 className="text-lg font-bold text-white uppercase tracking-wider">
+              🎨 WHISK IMAGE GENERATION
+            </h2>
+            <p className="text-sm text-on-surface-variant mt-1">
+              Google Whisk API for AI-powered image generation with reference support
+            </p>
+          </div>
+
+          <div className="p-6 space-y-6">
+            <div>
+              <label className="flex items-center gap-2 text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                API Token
+                <a
+                  href="/docs/REFERENCE.md#whisk-token-refresh"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Token expires every ~1 hour. See how to refresh."
+                  className="text-on-surface-variant hover:text-primary transition-colors"
+                >
+                  <Icon name="help_outline" size="sm" />
+                </a>
+              </label>
+              <Input
+                type="password"
+                value={whiskToken}
+                onChange={(e) => setWhiskToken(e.target.value)}
+                placeholder="ya29.a0..."
+              />
+              <div className="mt-2 text-xs text-on-surface-variant space-y-1">
+                <p>Expires hourly. Get fresh token: F12 → Network → Generate image → Copy "Authorization" header</p>
+                <p className="pt-1">1. Open <a href="https://labs.google.com/whisk" target="_blank" rel="noopener noreferrer" className="text-primary underline">labs.google.com/whisk</a></p>
+                <p>2. Open DevTools (F12) → Network tab</p>
+                <p>3. Generate a test image</p>
+                <p>4. Find the request → Copy Authorization header value</p>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                Image Model
+              </label>
+              <Select
+                value={whiskModel}
+                onChange={(e) => setWhiskModel(e.target.value)}
+              >
+                <option value="IMAGEN_3_5">Imagen 3.5 (Stable, Fast)</option>
+                <option value="IMAGEN_4">Imagen 4 (Higher Quality, Beta)</option>
+              </Select>
+            </div>
+
+            <div className="bg-blue-900/20 border-l-4 border-blue-500 p-4 rounded-lg">
+              <h4 className="font-bold text-blue-400 mb-2">✨ Reference Images</h4>
+              <p className="text-xs text-blue-200 mb-2">
+                Upload references in the storyboard editor to guide image generation:
+              </p>
+              <ul className="text-xs text-blue-200 space-y-1 ml-4">
+                <li><strong>Subject:</strong> Main object/character appearance</li>
+                <li><strong>Scene:</strong> Background/environment style</li>
+                <li><strong>Style:</strong> Overall visual aesthetic</li>
+              </ul>
+            </div>
+          </div>
+        </Card>
+
         {/* Remotion Rendering */}
         <Card variant="default">
           <div className="border-b border-outline-variant px-6 py-4">
@@ -394,7 +605,10 @@ export default function SettingsPage() {
           <div className="p-6 space-y-6">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                <label
+                  className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2"
+                  title="Maximum time for video rendering (default: 300000ms = 5 minutes)"
+                >
                   Timeout (ms)
                 </label>
                 <Input
@@ -409,7 +623,10 @@ export default function SettingsPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2">
+                <label
+                  className="block text-sm font-bold text-on-surface-variant uppercase tracking-wider mb-2"
+                  title="Number of parallel frames to render (2-8). Higher = faster but more CPU/RAM"
+                >
                   Concurrency
                 </label>
                 <Input
@@ -440,17 +657,30 @@ export default function SettingsPage() {
         )}
 
         {/* Save Button */}
-        <Button
-          variant="primary"
-          onClick={handleSave}
-          disabled={saving}
-          className="w-full"
-        >
-          {saving ? 'SAVING TO .ENV FILE...' : 'SAVE ALL SETTINGS'}
-        </Button>
+        <div className="space-y-4">
+          <Button
+            variant="primary"
+            onClick={handleSave}
+            disabled={saving}
+            className="w-full"
+          >
+            {saving ? 'SAVING TO .ENV FILE...' : 'SAVE ALL SETTINGS'}
+          </Button>
 
-        <div className="text-xs text-on-surface-variant text-center pb-6">
-          ⚠️ After saving, restart workers (STOP.bat then START.bat) for changes to take effect
+          <div className="bg-yellow-900/20 border border-yellow-500/50 rounded-lg p-4">
+            <div className="flex items-start gap-3">
+              <Icon name="info" size="sm" className="text-yellow-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-yellow-200">
+                <strong className="block mb-1">Changes require worker restart (30-60 seconds)</strong>
+                <p>After saving, restart workers for changes to take effect:</p>
+                <div className="flex items-center gap-2 mt-2 font-mono">
+                  <code className="bg-surface-container px-2 py-1 rounded">STOP.bat</code>
+                  <span>→</span>
+                  <code className="bg-surface-container px-2 py-1 rounded">START.bat</code>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

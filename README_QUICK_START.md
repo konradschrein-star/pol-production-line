@@ -1,4 +1,20 @@
-# Obsidian News Desk - Quick Start Guide
+# ⚠️ DEPRECATED - See docs/QUICK_START.md
+
+> **This quick start guide has been moved and enhanced.**
+>
+> **Please use:** **[docs/QUICK_START.md](docs/QUICK_START.md)**
+>
+> The new guide includes:
+> - More detailed setup instructions
+> - Troubleshooting section
+> - Timeline expectations
+> - Complete first video walkthrough
+>
+> **Last Updated:** March 22, 2026
+
+---
+
+# Obsidian News Desk - Quick Start Guide (ARCHIVED)
 
 ## 🚀 First-Time Setup
 

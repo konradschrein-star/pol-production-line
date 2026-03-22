@@ -103,17 +103,26 @@ export default function NewBroadcastPage() {
 
             <div className="p-8 space-y-8">
               <div>
-                <label className="block text-sm font-semibold text-on-surface-variant mb-2">
+                <label className="flex items-center gap-2 text-sm font-semibold text-on-surface-variant mb-2">
                   AI Provider
+                  <a
+                    href="/docs/USER_GUIDE.md#ai-providers"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-on-surface-variant hover:text-primary transition-colors"
+                    title="Learn about AI provider options"
+                  >
+                    <Icon name="help_outline" size="sm" />
+                  </a>
                 </label>
                 <Select
                   value={provider}
                   onChange={(e) => setProvider(e.target.value)}
                 >
-                  <option value="openai">OpenAI (ChatGPT)</option>
-                  <option value="claude">Claude (Anthropic)</option>
-                  <option value="google">Google AI</option>
-                  <option value="groq">Groq</option>
+                  <option value="openai" title="ChatGPT models, balanced quality and speed">OpenAI (ChatGPT)</option>
+                  <option value="claude" title="Premium quality, best for news analysis, requires paid API key">Claude (Anthropic)</option>
+                  <option value="google" title="Free tier friendly (60 req/min), good quality, recommended for beginners">Google AI (Recommended)</option>
+                  <option value="groq" title="Fastest processing, good for testing, may have rate limits">Groq</option>
                 </Select>
                 <p className="mt-3 text-sm text-on-surface-variant leading-relaxed">
                   This provider will analyze your script and generate scene
@@ -205,7 +214,16 @@ In other news, tensions continue to rise in Eastern Europe as diplomatic talks b
                   </div>
                 )}
                 <p className="mt-3 text-sm text-on-surface-variant leading-relaxed">
-                  Upload the avatar video you created in HeyGen using this script. Make sure it's exported as MP4 with 48kHz audio.
+                  Upload the avatar video you created in HeyGen using this script. <span className="text-yellow-400 font-medium">⚠️ Critical: Must be MP4 with H.264 codec and 48kHz audio for proper sync.</span>
+                  {' '}
+                  <a
+                    href="/docs/USER_GUIDE.md#avatar-generation"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline hover:text-primary"
+                  >
+                    See requirements
+                  </a>
                 </p>
               </div>
 
