@@ -19,6 +19,9 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
     console.log(`📝 Script length: ${rawScript.length} characters`);
     console.log(`🤖 AI Provider: ${providerType || 'default (from env)'}`);
 
+    // Start timing for metrics
+    const analysisStartTime = Date.now();
+
     try {
       // Update job status to analyzing
       await db.query(
@@ -29,6 +32,9 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
       // Call AI provider with specified type
       const provider = createAIProvider(providerType);
       const analysis = await provider.analyzeScript(rawScript);
+
+      // Record analysis timing
+      const analysisTimeMs = Date.now() - analysisStartTime;
 
       console.log(`✅ [ANALYZE] AI analysis complete:`);
       console.log(`   - Scenes generated: ${analysis.scenes.length}`);
@@ -51,6 +57,18 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
       }
 
       console.log(`💾 [ANALYZE] Stored ${analysis.scenes.length} scenes in database`);
+
+      // Create job_metrics record with analysis timing
+      await db.query(
+        `INSERT INTO job_metrics (job_id, analysis_time_ms, scene_count)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (job_id) DO UPDATE
+         SET analysis_time_ms = EXCLUDED.analysis_time_ms,
+             scene_count = EXCLUDED.scene_count`,
+        [jobId, analysisTimeMs, analysis.scenes.length]
+      );
+
+      console.log(`📊 [ANALYZE] Metrics recorded: ${analysisTimeMs}ms for ${analysis.scenes.length} scenes`);
 
       // Update job status to generating_images
       await db.query(

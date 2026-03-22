@@ -25,6 +25,7 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+.env.backup
 
 # vercel
 .vercel
@@ -33,6 +34,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# playwright
+# playwright and browser automation
 playwright-data/
+playwright-chrome-*/
 /tmp/
+
+# large media files (avatars stored locally, not in git)
+public/avatars/*.mp4
+*.mp4
