@@ -1,27 +1,39 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { existsSync } from 'fs';
+import { getBaseStoragePath, makeRelativePath, resolveStoragePath } from './path-resolver';
 
 /**
  * Local file storage manager
  * Replaces R2 cloud storage with local filesystem
  *
- * Base directory: C:\Users\konra\ObsidianNewsDesk\
+ * Base directory: Configured via LOCAL_STORAGE_ROOT env var or Electron config
+ * Default: %USERPROFILE%\ObsidianNewsDesk (portable across user accounts)
+ *
+ * Subdirectories:
  * - images/ - Scene background images
  * - avatars/ - HeyGen avatar MP4 files
  * - videos/ - Final rendered videos
+ * - footage/ - Stock video footage (Pexels)
  * - temp/ - Temporary processing files
  */
 
-// Base directory for all stored files
-const BASE_DIR = path.join('C:', 'Users', 'konra', 'ObsidianNewsDesk');
+// Get base directory dynamically from path resolver
+function getBaseDIR(): string {
+  return getBaseStoragePath();
+}
 
-const DIRS = {
-  images: path.join(BASE_DIR, 'images'),
-  avatars: path.join(BASE_DIR, 'avatars'),
-  videos: path.join(BASE_DIR, 'videos'),
-  temp: path.join(BASE_DIR, 'temp'),
-};
+// Dynamic directory paths (resolved at runtime)
+function getDIRS() {
+  const BASE_DIR = getBaseDIR();
+  return {
+    images: path.join(BASE_DIR, 'images'),
+    avatars: path.join(BASE_DIR, 'avatars'),
+    videos: path.join(BASE_DIR, 'videos'),
+    footage: path.join(BASE_DIR, 'footage'),
+    temp: path.join(BASE_DIR, 'temp'),
+  };
+}
 
 /**
  * Initialize storage directories
@@ -29,6 +41,9 @@ const DIRS = {
  */
 export async function initStorage(): Promise<void> {
   try {
+    const BASE_DIR = getBaseDIR();
+    const DIRS = getDIRS();
+
     for (const [category, dir] of Object.entries(DIRS)) {
       await fs.mkdir(dir, { recursive: true });
       console.log(`✅ [Storage] ${category} directory ready: ${dir}`);
@@ -45,14 +60,15 @@ export async function initStorage(): Promise<void> {
  * @param sourcePath - Path to source file
  * @param category - Storage category ('images' | 'avatars' | 'videos')
  * @param filename - Destination filename
- * @returns Absolute path to saved file
+ * @returns Relative path for database storage (e.g., "images/filename.jpg")
  */
 export async function saveFile(
   sourcePath: string,
-  category: 'images' | 'avatars' | 'videos',
+  category: 'images' | 'avatars' | 'videos' | 'footage',
   filename: string
 ): Promise<string> {
   try {
+    const DIRS = getDIRS();
     const destPath = path.join(DIRS[category], filename);
 
     // Ensure source file exists
@@ -67,7 +83,8 @@ export async function saveFile(
     console.log(`   Source: ${sourcePath}`);
     console.log(`   Destination: ${destPath}`);
 
-    return destPath;
+    // Return relative path for database storage
+    return `${category}/${filename}`;
   } catch (error) {
     console.error(`❌ [Storage] Failed to save file ${filename}:`, error);
     throw new Error(`Failed to save file: ${error instanceof Error ? error.message : String(error)}`);
@@ -79,14 +96,15 @@ export async function saveFile(
  * @param buffer - File buffer
  * @param category - Storage category ('images' | 'avatars' | 'videos')
  * @param filename - Destination filename
- * @returns Absolute path to saved file
+ * @returns Relative path for database storage (e.g., "images/filename.jpg")
  */
 export async function saveBuffer(
   buffer: Buffer,
-  category: 'images' | 'avatars' | 'videos',
-  filename: string
+  filename: string,
+  category: 'images' | 'avatars' | 'videos' | 'footage'
 ): Promise<string> {
   try {
+    const DIRS = getDIRS();
     const destPath = path.join(DIRS[category], filename);
 
     // Write buffer to file
@@ -96,7 +114,8 @@ export async function saveBuffer(
     console.log(`   Destination: ${destPath}`);
     console.log(`   Size: ${buffer.length} bytes`);
 
-    return destPath;
+    // Return relative path for database storage
+    return `${category}/${filename}`;
   } catch (error) {
     console.error(`❌ [Storage] Failed to save buffer ${filename}:`, error);
     throw new Error(`Failed to save buffer: ${error instanceof Error ? error.message : String(error)}`);
@@ -144,7 +163,8 @@ export async function fileExists(filePath: string): Promise<boolean> {
  * @param category - Storage category
  * @returns Absolute directory path
  */
-export function getDirectory(category: 'images' | 'avatars' | 'videos' | 'temp'): string {
+export function getDirectory(category: 'images' | 'avatars' | 'videos' | 'footage' | 'temp'): string {
+  const DIRS = getDIRS();
   return DIRS[category];
 }
 
@@ -153,7 +173,7 @@ export function getDirectory(category: 'images' | 'avatars' | 'videos' | 'temp')
  * @returns Base directory path
  */
 export function getBaseDirectory(): string {
-  return BASE_DIR;
+  return getBaseDIR();
 }
 
 /**
@@ -161,5 +181,25 @@ export function getBaseDirectory(): string {
  * @returns true if all directories exist
  */
 export function isStorageInitialized(): boolean {
+  const DIRS = getDIRS();
   return Object.values(DIRS).every(dir => existsSync(dir));
+}
+
+/**
+ * Resolve a relative path to absolute file system path
+ * Handles both relative and absolute paths for backward compatibility
+ * @param relativePath - Path relative to storage root (e.g., "images/uuid.jpg")
+ * @returns Absolute file system path
+ */
+export function resolveFilePath(relativePath: string): string {
+  return resolveStoragePath(relativePath);
+}
+
+/**
+ * Convert absolute path to relative path for database storage
+ * @param absolutePath - Absolute file system path
+ * @returns Relative path (e.g., "images/uuid.jpg")
+ */
+export function toRelativePath(absolutePath: string): string {
+  return makeRelativePath(absolutePath);
 }

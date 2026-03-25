@@ -1,0 +1,77 @@
+appId: com.obsidiannewsdesk.app
+productName: Obsidian News Desk
+copyright: Copyright © 2026 Obsidian News Desk
+
+# Directories
+directories:
+  output: dist
+  buildResources: electron/build
+
+# Files to include
+files:
+  - .next/**/*
+  - electron/dist/**/*
+  - node_modules/**/*
+  - package.json
+  - docker-compose.yml
+  - scripts/**/*
+  - src/**/*
+  - public/**/*
+  - next.config.js
+  - tsconfig.json
+  - tailwind.config.ts
+  - postcss.config.js
+  - "!node_modules/@remotion"
+  - "!.git"
+  - "!.github"
+  - "!.vscode"
+  - "!**/*.md"
+  - "!**/*.log"
+
+# Extend info plist
+extraMetadata:
+  main: electron/dist/main.js
+
+# Windows-specific configuration
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: electron/build/icon.ico
+  artifactName: ${productName}-Setup-${version}.${ext}
+  publisherName: Obsidian News Desk
+  verifyUpdateCodeSignature: false
+
+# NSIS installer configuration
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: true
+  deleteAppDataOnUninstall: false
+  createDesktopShortcut: always
+  createStartMenuShortcut: true
+  shortcutName: ${productName}
+  installerIcon: electron/build/icon.ico
+  uninstallerIcon: electron/build/icon.ico
+  installerHeader: electron/build/installerHeader.bmp
+  installerHeaderIcon: electron/build/icon.ico
+  license: LICENSE
+  warningsAsErrors: false
+  displayLanguageSelector: false
+  installerLanguages:
+    - en_US
+  menuCategory: false
+
+# Compression
+compression: normal
+
+# App metadata
+artifactName: ${name}-${version}-${os}-${arch}.${ext}
+
+# Publish configuration (for auto-updates)
+publish:
+  provider: github
+  owner: konradschrein-star
+  repo: pol-production-line
+  releaseType: release

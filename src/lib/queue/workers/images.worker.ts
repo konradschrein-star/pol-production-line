@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { Worker, Job } from 'bullmq';
 import { redisOptions } from '../index';
 import { queueAvatarAutomation } from '../queues';
@@ -8,6 +9,9 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { AdaptiveRateLimiter, calculateBackoff } from '../rate-limiter';
 import { PromptSanitizer, quickSanitize } from '../../ai/prompt-sanitizer';
+import { stylePresetManager } from '../../style-presets/manager';
+import { referenceManager } from '../../whisk/reference-manager';
+import { getBaseStoragePath } from '../../storage/path-resolver';
 
 interface ImageJobData {
   sceneId: string;
@@ -17,14 +21,15 @@ interface ImageJobData {
 
 // PRODUCTION HARDENING CONSTANTS
 const MAX_RETRIES = 3; // Maximum retry attempts per scene
-const RETRY_BACKOFF_BASE = 5000; // 5s base backoff (5s, 10s, 20s)
+const RETRY_BACKOFF_BASE = 3000; // 3s base backoff (3s, 6s, 12s) - Reduced from 5s for faster retries
 const MAX_PROMPT_SANITIZATION_ATTEMPTS = 3; // Max attempts to sanitize a rejected prompt
+const API_TIMEOUT_MS = 90000; // 90s timeout for API calls (Whisk can be slow)
 
 // Adaptive rate limiter instance (shared across all workers)
 const rateLimiter = new AdaptiveRateLimiter({
   minConcurrency: parseInt(process.env.WHISK_MIN_CONCURRENCY || '2'),
-  maxConcurrency: parseInt(process.env.WHISK_MAX_CONCURRENCY || '5'),
-  initialConcurrency: parseInt(process.env.WHISK_CONCURRENCY || '2'),
+  maxConcurrency: parseInt(process.env.WHISK_MAX_CONCURRENCY || '8'),
+  initialConcurrency: parseInt(process.env.WHISK_CONCURRENCY || '3'), // Increased from 2 to 3 for faster processing
 });
 
 // Prompt sanitizer for handling content policy violations
@@ -38,11 +43,25 @@ function delay(ms: number): Promise<void> {
 }
 
 /**
+ * Wrapper to add timeout to API calls
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string = 'Operation timed out'
+): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error(errorMessage)), timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]);
+}
+
+/**
  * Get local storage path for images
  */
 function getImageStoragePath(): string {
-  const storageRoot = process.env.LOCAL_STORAGE_ROOT || 'C:\\Users\\konra\\ObsidianNewsDesk';
-  return join(storageRoot, 'images');
+  return join(getBaseStoragePath(), 'images');
 }
 
 /**
@@ -66,20 +85,46 @@ export const imagesWorker = new Worker<ImageJobData>(
 
       console.log(`✅ [IMAGES] Scene status updated to 'generating'`);
 
-      // 2. Reference images (disabled - database schema not ready)
-      const referenceImages: WhiskReferenceImages | undefined = undefined;
+      // 2. Fetch and apply style preset if job has one
+      let currentPrompt = imagePrompt;
+      const jobStyleResult = await db.query(
+        'SELECT style_preset_id FROM news_jobs WHERE id = $1',
+        [jobId]
+      );
 
-      // 3. Initialize Whisk API client
+      if (jobStyleResult.rows[0]?.style_preset_id) {
+        const presetId = jobStyleResult.rows[0].style_preset_id;
+        try {
+          currentPrompt = await stylePresetManager.applyToPrompt(imagePrompt, presetId);
+          console.log(`📐 [IMAGES] Applied style preset to prompt`);
+        } catch (error) {
+          console.warn(`⚠️  [IMAGES] Failed to apply style preset ${presetId}, using original prompt:`, error);
+        }
+      }
+
+      // 3. Reference images - Resolve using modular reference manager
+      const stylePresetId = jobStyleResult.rows[0]?.style_preset_id;
+      const refResolution = await referenceManager.resolveReferences(sceneId, stylePresetId);
+
+      console.log(`📐 [IMAGES] Reference strategy: ${refResolution.strategy}`);
+      if (refResolution.appliedReferences.length > 0) {
+        console.log(`🎨 [IMAGES] Applied references: ${refResolution.appliedReferences.join(', ')}`);
+      } else {
+        console.log(`📭 [IMAGES] No reference images for this scene`);
+      }
+
+      const referenceImages = refResolution.references;
+
+      // 4. Initialize Whisk API client
       const whiskClient = new WhiskAPIClient();
 
-      // 4. Generate image via API with automatic content policy retry
+      // 5. Generate image via API with automatic content policy retry
       console.log(`🎨 [IMAGES] Calling Whisk API...`);
       if (referenceImages && Object.keys(referenceImages).length > 0) {
         console.log(`🎨 [IMAGES] Using reference images:`, Object.keys(referenceImages));
       }
 
       let result;
-      let currentPrompt = imagePrompt;
       let sanitizationAttempt = 0;
       const originalPrompt = imagePrompt; // Track original for logging
       const generationStartTime = Date.now(); // Track generation time
@@ -98,14 +143,19 @@ export const imagesWorker = new Worker<ImageJobData>(
 
           const attemptStartTime = Date.now();
 
-          result = await whiskClient.generateImage({
-            prompt: currentPrompt,
-            aspectRatio: 'IMAGE_ASPECT_RATIO_LANDSCAPE', // 16:9 for news videos
-            referenceImages: Object.keys(referenceImages || {}).length > 0
-              ? referenceImages
-              : undefined,
-            imageModel: (process.env.WHISK_IMAGE_MODEL as any) || 'IMAGEN_3_5',
-          });
+          // Add timeout to prevent hanging API calls
+          result = await withTimeout(
+            whiskClient.generateImage({
+              prompt: currentPrompt,
+              aspectRatio: 'IMAGE_ASPECT_RATIO_LANDSCAPE', // 16:9 for news videos
+              referenceImages: Object.keys(referenceImages || {}).length > 0
+                ? referenceImages
+                : undefined,
+              imageModel: (process.env.WHISK_IMAGE_MODEL as any) || 'IMAGEN_3_5',
+            }),
+            API_TIMEOUT_MS,
+            `Whisk API timed out after ${API_TIMEOUT_MS / 1000}s`
+          );
 
           const attemptTimeMs = Date.now() - attemptStartTime;
 
@@ -174,15 +224,25 @@ export const imagesWorker = new Worker<ImageJobData>(
               ]
             );
 
-            // Use AI to sanitize the prompt
-            currentPrompt = await promptSanitizer.sanitizePrompt(
-              currentPrompt,
-              errorMessage,
-              sanitizationAttempt
-            );
+            // Use AI to sanitize the prompt with timeout
+            try {
+              currentPrompt = await withTimeout(
+                promptSanitizer.sanitizePrompt(
+                  currentPrompt,
+                  errorMessage,
+                  sanitizationAttempt
+                ),
+                15000, // 15s timeout for AI sanitization
+                'Prompt sanitization timed out'
+              );
+            } catch (sanitizeError) {
+              console.error('⚠️  [IMAGES] Prompt sanitization failed:', sanitizeError);
+              // Fall back to simple sanitization
+              currentPrompt = quickSanitize(currentPrompt);
+            }
 
-            // Wait a bit before retrying
-            await delay(2000);
+            // Wait a bit before retrying (reduced from 2s to 1s)
+            await delay(1000);
             continue;
           }
 
@@ -209,37 +269,45 @@ export const imagesWorker = new Worker<ImageJobData>(
         throw new Error(`Failed to generate image after ${MAX_PROMPT_SANITIZATION_ATTEMPTS} sanitization attempts`);
       }
 
-      // 5. Decode base64 image
+      // 5. Decode base64 image with timeout
       const image = result.images[0];
-      const imageBuffer = await whiskClient.downloadImage(image.url, image.base64);
+      const imageBuffer = await withTimeout(
+        whiskClient.downloadImage(image.url, image.base64),
+        30000, // 30s timeout for download
+        'Image download timed out'
+      );
 
-      console.log(`✅ [IMAGES] Image decoded from base64`);
+      console.log(`✅ [IMAGES] Image downloaded (${(imageBuffer.length / 1024).toFixed(1)} KB)`);
 
-      // 6. Save to local storage
+      // 6. Save to local storage (optimized)
       const storageDir = getImageStoragePath();
       const filename = `${sceneId}.jpg`;
       const localPath = join(storageDir, filename);
 
-      // Ensure directory exists
+      // Ensure directory exists (use lazy mkdir)
       const { mkdirSync, existsSync } = require('fs');
       if (!existsSync(storageDir)) {
         mkdirSync(storageDir, { recursive: true });
       }
 
+      // Write file synchronously (faster for small files)
       writeFileSync(localPath, imageBuffer);
 
-      console.log(`💾 [IMAGES] Saved to local storage: ${localPath}`);
+      console.log(`💾 [IMAGES] Saved to: ${localPath}`);
 
-      // 7. Update scene in database with LOCAL PATH (simplified - removed metadata columns that don't exist yet)
+      // 7. Update scene in database with RELATIVE PATH (for portability)
+      const relativePath = `images/${filename}`; // Store as "images/uuid.jpg" format
       await db.query(
         `UPDATE news_scenes
          SET
            image_url = $1,
-           generation_status = $2
-         WHERE id = $3`,
+           generation_status = $2,
+           retry_count = $3
+         WHERE id = $4`,
         [
-          localPath,
+          relativePath,
           'completed',
+          job.attemptsMade, // Track number of retries required
           sceneId,
         ]
       );
@@ -267,23 +335,32 @@ export const imagesWorker = new Worker<ImageJobData>(
         // All scenes done → check avatar mode
         const avatarMode = process.env.AVATAR_MODE || 'manual';
 
+        // Use database-level locking to prevent race condition
+        // Only update if job is still in 'generating_images' state
+        const updateResult = await db.query(
+          `UPDATE news_jobs
+           SET status = $1, updated_at = NOW()
+           WHERE id = $2 AND status = 'generating_images'
+           RETURNING id`,
+          ['review_assets', jobId]
+        );
+
+        // Check if this worker won the race to update the status
+        if (updateResult.rowCount === 0) {
+          console.log(`⏭️  [IMAGES] Job ${jobId} already transitioned by another worker`);
+          return {
+            success: true,
+            sceneId,
+            message: 'Scene completed but status already updated'
+          };
+        }
+
         if (avatarMode === 'automated') {
           // Automated mode: Queue for avatar automation
-          await db.query(
-            'UPDATE news_jobs SET status = $1 WHERE id = $2',
-            ['review_assets', jobId]
-          );
-
           await queueAvatarAutomation.add('generate-avatar', { jobId });
-
           console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → avatar automation queued`);
         } else {
           // Manual mode: Pause at review_assets for human intervention
-          await db.query(
-            'UPDATE news_jobs SET status = $1 WHERE id = $2',
-            ['review_assets', jobId]
-          );
-
           console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → review_assets (manual avatar generation required)`);
         }
       }
@@ -305,28 +382,35 @@ export const imagesWorker = new Worker<ImageJobData>(
       // Classify error type for appropriate handling
       const isAuthError = errorMessage.includes('401') ||
                           errorMessage.includes('Unauthorized') ||
-                          errorMessage.includes('WHISK_API_TOKEN');
+                          errorMessage.includes('Token refresh failed');
 
       const isRateLimitError = errorMessage.includes('429') ||
                                errorMessage.includes('Rate limit') ||
                                errorMessage.includes('Too many requests');
 
       if (isAuthError) {
-        // Token expired or invalid - pause queue
-        console.error('⚠️ [IMAGES] PAUSING QUEUE: Whisk API token expired or invalid');
-        await imagesWorker.pause();
+        // Token refresh is now handled automatically by WhiskAPIClient
+        // If we see this error, it means automatic refresh failed
+        console.error('❌ [IMAGES] Automatic token refresh failed for scene', sceneId);
+        console.error('   Error details:', errorMessage);
 
+        // Update job with helpful error message
         await db.query(
           'UPDATE news_jobs SET status = $1, error_message = $2 WHERE id = $3',
-          ['failed', 'Whisk API token expired. Please refresh token in .env and resume queue.', jobId]
+          [
+            'failed',
+            'Whisk API token refresh failed. Please check Chrome profile authentication or manually refresh token.',
+            jobId
+          ]
         );
 
         await db.query(
           'UPDATE news_scenes SET generation_status = $1, error_message = $2 WHERE id = $3',
-          ['pending', errorMessage, sceneId]
+          ['failed', errorMessage, sceneId]
         );
 
-        return; // Exit without throwing (don't retry)
+        // Let BullMQ retry logic handle it (don't pause queue)
+        throw new Error(errorMessage);
       }
 
       if (isRateLimitError) {
@@ -354,8 +438,8 @@ export const imagesWorker = new Worker<ImageJobData>(
         const backoffDelay = calculateBackoff(attemptNumber, RETRY_BACKOFF_BASE);
 
         await db.query(
-          'UPDATE news_scenes SET generation_status = $1, error_message = $2 WHERE id = $3',
-          ['pending', `Failed (attempt ${attemptNumber + 1}). Retrying in ${backoffDelay / 1000}s...`, sceneId]
+          'UPDATE news_scenes SET generation_status = $1, error_message = $2, retry_count = $3 WHERE id = $4',
+          ['pending', `Failed (attempt ${attemptNumber + 1}). Retrying in ${backoffDelay / 1000}s...`, attemptNumber + 1, sceneId]
         );
 
         console.warn(`⚠️ [IMAGES] Retrying scene ${sceneId} in ${backoffDelay / 1000}s...`);
@@ -364,8 +448,8 @@ export const imagesWorker = new Worker<ImageJobData>(
       } else {
         // Max retries reached - permanent failure
         await db.query(
-          'UPDATE news_scenes SET generation_status = $1, error_message = $2 WHERE id = $3',
-          ['failed', `Failed after ${MAX_RETRIES} attempts: ${errorMessage}`, sceneId]
+          'UPDATE news_scenes SET generation_status = $1, error_message = $2, retry_count = $3, failed_permanently = $4 WHERE id = $5',
+          ['failed', `Failed after ${MAX_RETRIES} attempts: ${errorMessage}`, MAX_RETRIES, true, sceneId]
         );
 
         console.error(`❌ [IMAGES] Scene ${sceneId} PERMANENTLY FAILED after ${MAX_RETRIES} attempts`);
@@ -375,7 +459,14 @@ export const imagesWorker = new Worker<ImageJobData>(
   },
   {
     connection: redisOptions,
-    concurrency: process.env.WHISK_CONCURRENCY ? parseInt(process.env.WHISK_CONCURRENCY) : 2, // 2 parallel generations (configurable)
+    concurrency: process.env.WHISK_CONCURRENCY ? parseInt(process.env.WHISK_CONCURRENCY) : 3, // 3 parallel generations (increased from 2 for faster processing)
+    removeOnComplete: {
+      age: 3600, // Keep completed jobs for 1 hour
+      count: 100, // Keep last 100 jobs
+    },
+    removeOnFail: {
+      age: 86400, // Keep failed jobs for 24 hours for debugging
+    },
   }
 );
 

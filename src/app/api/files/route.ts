@@ -1,13 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readFile, lstat } from 'fs/promises';
 import { existsSync } from 'fs';
-import { extname, resolve, normalize } from 'path';
+import { extname, resolve, normalize, isAbsolute } from 'path';
+import { getBaseStoragePath, resolveStoragePath } from '@/lib/storage/path-resolver';
 
 /**
  * File Server API Route
  * Serves local files via HTTP for frontend display
  *
- * GET /api/files?path=C:\Users\konra\ObsidianNewsDesk\images\scene123.png
+ * Supports both relative and absolute paths (for backward compatibility):
+ * - GET /api/files?path=images/scene123.png (new, portable format)
+ * - GET /api/files?path=C:\Users\konra\ObsidianNewsDesk\images\scene123.png (legacy)
  *
  * Returns the file with correct content-type headers
  */
@@ -37,16 +40,23 @@ export async function GET(req: NextRequest) {
 
     console.log(`📁 [Files API] Request for: ${filePath}`);
 
+    // Resolve path (handles both relative and absolute for backward compatibility)
+    const resolvedPath = isAbsolute(filePath)
+      ? filePath // Legacy absolute path
+      : resolveStoragePath(filePath); // New relative path
+
     // Security check: Prevent path traversal attacks
-    const allowedBasePath = process.env.LOCAL_STORAGE_PATH || 'C:\\Users\\konra\\ObsidianNewsDesk';
+    const allowedBasePath = getBaseStoragePath();
 
     // Normalize and resolve paths to prevent .. attacks
-    const normalizedPath = normalize(resolve(filePath));
+    const normalizedPath = normalize(resolve(resolvedPath));
     const normalizedBase = normalize(resolve(allowedBasePath));
 
     // Verify resolved path still starts with base directory
     if (!normalizedPath.startsWith(normalizedBase)) {
       console.error(`⛔ [Files API] Path traversal attempt blocked: ${filePath}`);
+      console.error(`   Resolved to: ${normalizedPath}`);
+      console.error(`   Allowed base: ${normalizedBase}`);
       return new NextResponse('Forbidden', { status: 403 });
     }
 
