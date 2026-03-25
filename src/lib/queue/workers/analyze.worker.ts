@@ -3,6 +3,7 @@ import { Worker, Job } from 'bullmq';
 import { redisOptions } from '../index';
 import { queueImages } from '../queues';
 import { db } from '../../db';
+import { withTransaction, transitionJobState } from '../../db/transactions';
 import { createAIProvider, ProviderType } from '../../ai';
 import { stylePresetManager } from '../../style-presets/manager';
 import { SCRIPT_ANALYZER_SYSTEM_PROMPT, SCRIPT_ANALYZER_USER_PROMPT } from '../../ai/prompts/script-analyzer';
@@ -12,16 +13,35 @@ interface AnalyzeJobData {
   jobId: string;
   rawScript: string;
   provider?: ProviderType;
+  avatarDurationSeconds?: number; // NEW: Optional avatar duration for scene-based analysis
+  useSceneBased?: boolean;        // NEW: Flag to enable scene-based analysis
+}
+
+/**
+ * Estimates avatar duration based on script length
+ * Average speaking rate: 150 words/minute = 2.5 words/second
+ */
+function estimateAvatarDuration(script: string): number {
+  const words = script.split(/\s+/).filter(w => w.length > 0);
+  const estimatedSeconds = words.length / 2.5;
+  return Math.max(30, estimatedSeconds); // Minimum 30 seconds
 }
 
 export const analyzeWorker = new Worker<AnalyzeJobData>(
   'queue_analyze',
   async (job: Job<AnalyzeJobData>) => {
-    const { jobId, rawScript, provider: providerType } = job.data;
+    const {
+      jobId,
+      rawScript,
+      provider: providerType,
+      avatarDurationSeconds,
+      useSceneBased = process.env.SCENE_BASED_ANALYSIS === 'true', // Default from env
+    } = job.data;
 
     console.log(`\n🔍 [ANALYZE] Starting analysis for job ${jobId}`);
     console.log(`📝 Script length: ${rawScript.length} characters`);
     console.log(`🤖 AI Provider: ${providerType || 'default (from env)'}`);
+    console.log(`🎬 Scene-based mode: ${useSceneBased ? 'ENABLED' : 'DISABLED'}`);
 
     // Start timing for metrics
     const analysisStartTime = Date.now();
@@ -66,7 +86,7 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
         }
       }
 
-      // 3. Update job status to analyzing
+      // 3. Update job status to analyzing (no transaction needed, initial state)
       await db.query(
         'UPDATE news_jobs SET status = $1 WHERE id = $2',
         ['analyzing', jobId]
@@ -74,13 +94,31 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
 
       // 4. Call AI provider with segmented script and style-enhanced prompts
       const provider = createAIProvider(providerType);
+      let analysis;
 
-      // Create enhanced prompts with segmented script and style context
-      const systemPrompt = SCRIPT_ANALYZER_SYSTEM_PROMPT(styleContext);
-      const userPrompt = SCRIPT_ANALYZER_USER_PROMPT(segmentedScript, stylePresetName || undefined);
+      if (useSceneBased && 'analyzeScriptSceneBasedWithDuration' in provider) {
+        // NEW: Scene-based analysis (Phase 2)
+        console.log(`🎬 [ANALYZE] Using scene-based analysis...`);
 
-      // Call provider with enhanced prompts
-      const analysis = await provider.analyzeScriptWithContext(systemPrompt, userPrompt);
+        // Determine avatar duration (provided or estimated)
+        const duration = avatarDurationSeconds || estimateAvatarDuration(rawScript);
+        console.log(`   Estimated/provided avatar duration: ${duration.toFixed(1)}s`);
+
+        // Call scene-based analysis
+        analysis = await (provider as any).analyzeScriptSceneBasedWithDuration(
+          rawScript,
+          duration,
+          styleContext
+        );
+      } else {
+        // LEGACY: Flat sentence-based analysis
+        console.log(`📄 [ANALYZE] Using legacy sentence-based analysis...`);
+
+        const systemPrompt = SCRIPT_ANALYZER_SYSTEM_PROMPT(styleContext);
+        const userPrompt = SCRIPT_ANALYZER_USER_PROMPT(segmentedScript, stylePresetName || undefined);
+
+        analysis = await provider.analyzeScriptWithContext(systemPrompt, userPrompt);
+      }
 
       // Record analysis timing
       const analysisTimeMs = Date.now() - analysisStartTime;
@@ -88,57 +126,69 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
       console.log(`✅ [ANALYZE] AI analysis complete:`);
       console.log(`   - Scenes generated: ${analysis.scenes.length}`);
 
-      // Insert scenes into news_scenes using bulk INSERT ... RETURNING
-      // Now includes sentence_text, narrative_position, shot_type, visual_continuity_notes
-      const sceneValues = analysis.scenes.map((scene, idx) =>
-        `($1, $${idx * 9 + 2}, $${idx * 9 + 3}, $${idx * 9 + 4}, $${idx * 9 + 5}, $${idx * 9 + 6}, $${idx * 9 + 7}, $${idx * 9 + 8}, $${idx * 9 + 9}, $${idx * 9 + 10})`
-      ).join(', ');
+      // PRODUCTION HARDENING: Wrap database updates in transaction to prevent race conditions
+      // This ensures scenes are inserted AND status is updated atomically
+      const sceneResult = await withTransaction(async (client) => {
+        // Insert scenes into news_scenes using bulk INSERT ... RETURNING
+        const sceneValues = analysis.scenes.map((scene, idx) =>
+          `($1, $${idx * 9 + 2}, $${idx * 9 + 3}, $${idx * 9 + 4}, $${idx * 9 + 5}, $${idx * 9 + 6}, $${idx * 9 + 7}, $${idx * 9 + 8}, $${idx * 9 + 9}, $${idx * 9 + 10})`
+        ).join(', ');
 
-      const flatValues: any[] = [jobId];
-      analysis.scenes.forEach(scene => {
-        flatValues.push(
-          scene.id,                                                         // scene_order
-          scene.image_prompt,                                               // image_prompt
-          scene.ticker_headline,                                            // ticker_headline
-          'pending',                                                        // generation_status
-          scene.sentence_text || '',                                        // sentence_text (NEW)
-          scene.narrative_position || 'development',                        // narrative_position (NEW)
-          scene.shot_type || 'medium',                                      // shot_type (NEW)
-          scene.visual_continuity_notes || null,                            // visual_continuity_notes (NEW)
-          scene.scene_context ? JSON.stringify(scene.scene_context) : null  // scene_context (deprecated)
+        const flatValues: any[] = [jobId];
+        analysis.scenes.forEach(scene => {
+          flatValues.push(
+            scene.id,                                                         // scene_order
+            scene.image_prompt,                                               // image_prompt
+            scene.ticker_headline,                                            // ticker_headline
+            'pending',                                                        // generation_status
+            scene.sentence_text || '',                                        // sentence_text (NEW)
+            scene.narrative_position || 'development',                        // narrative_position (NEW)
+            scene.shot_type || 'medium',                                      // shot_type (NEW)
+            scene.visual_continuity_notes || null,                            // visual_continuity_notes (NEW)
+            scene.scene_context ? JSON.stringify(scene.scene_context) : null  // scene_context (deprecated)
+          );
+        });
+
+        const result = await client.query(
+          `INSERT INTO news_scenes
+           (job_id, scene_order, image_prompt, ticker_headline, generation_status,
+            sentence_text, narrative_position, shot_type, visual_continuity_notes, scene_context)
+           VALUES ${sceneValues}
+           RETURNING id, image_prompt`,
+          flatValues
         );
+
+        console.log(`💾 [ANALYZE] Stored ${result.rows.length} scenes in database (bulk insert)`);
+
+        // Create job_metrics record with analysis timing
+        await client.query(
+          `INSERT INTO job_metrics (job_id, analysis_time_ms, scene_count)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (job_id) DO UPDATE
+           SET analysis_time_ms = EXCLUDED.analysis_time_ms,
+               scene_count = EXCLUDED.scene_count`,
+          [jobId, analysisTimeMs, analysis.scenes.length]
+        );
+
+        console.log(`📊 [ANALYZE] Metrics recorded: ${analysisTimeMs}ms for ${analysis.scenes.length} scenes`);
+
+        // Transition job state with advisory lock to prevent race conditions
+        const transitioned = await transitionJobState(client, jobId, 'analyzing', 'generating_images');
+
+        if (!transitioned) {
+          throw new Error('Failed to transition job state (another worker may have already transitioned it)');
+        }
+
+        // Save avatar_script
+        await client.query(
+          'UPDATE news_jobs SET avatar_script = $1 WHERE id = $2',
+          [rawScript, jobId]
+        );
+
+        return result;
       });
 
-      const sceneResult = await db.query(
-        `INSERT INTO news_scenes
-         (job_id, scene_order, image_prompt, ticker_headline, generation_status,
-          sentence_text, narrative_position, shot_type, visual_continuity_notes, scene_context)
-         VALUES ${sceneValues}
-         RETURNING id, image_prompt`,
-        flatValues
-      );
-
-      console.log(`💾 [ANALYZE] Stored ${sceneResult.rows.length} scenes in database (bulk insert)`);
-
-      // Create job_metrics record with analysis timing
-      await db.query(
-        `INSERT INTO job_metrics (job_id, analysis_time_ms, scene_count)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (job_id) DO UPDATE
-         SET analysis_time_ms = EXCLUDED.analysis_time_ms,
-             scene_count = EXCLUDED.scene_count`,
-        [jobId, analysisTimeMs, analysis.scenes.length]
-      );
-
-      console.log(`📊 [ANALYZE] Metrics recorded: ${analysisTimeMs}ms for ${analysis.scenes.length} scenes`);
-
-      // Update job status to generating_images AND save avatar_script
-      await db.query(
-        'UPDATE news_jobs SET status = $1, avatar_script = $2 WHERE id = $3',
-        ['generating_images', rawScript, jobId]
-      );
-
-      // Queue all scenes to queue_images (using RETURNING data directly, no re-query needed)
+      // Queue all scenes to queue_images (OUTSIDE transaction for performance)
       for (const scene of sceneResult.rows) {
         await queueImages.add('generate-image', {
           sceneId: scene.id,

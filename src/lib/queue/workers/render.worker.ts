@@ -2,6 +2,7 @@ import 'dotenv/config';
 import { Worker, Job } from 'bullmq';
 import { redisOptions } from '../index';
 import { db } from '../../db';
+import { withTransaction, transitionJobState } from '../../db/transactions';
 import { renderNewsVideo } from '../../remotion/render';
 import { saveFile, resolveFilePath } from '../../storage/local';
 import { unlinkSync } from 'fs';
@@ -95,6 +96,9 @@ export const renderWorker = new Worker<RenderJobData>(
 
       console.log(`✅ [RENDER] All assets validated and prepared for rendering`);
 
+      // 3. Prepare word timestamps for transcription (if available)
+      let wordTimestamps: WordTimestamp[] | undefined = word_timestamps ? JSON.parse(JSON.stringify(word_timestamps)) : undefined;
+
       // QUALITY CHECK: Validate scene timing and coverage BEFORE rendering
       // This prevents wasting 20+ minutes on a render that will have black screens
       console.log(`\n🔍 [RENDER] Running pre-render quality checks...`);
@@ -133,8 +137,7 @@ export const renderWorker = new Worker<RenderJobData>(
         console.log(`✅ [RENDER] Quality check passed - no issues detected`);
       }
 
-      // 3. Transcribe avatar for word timestamps (if not already done)
-      let wordTimestamps: WordTimestamp[] | undefined = word_timestamps ? JSON.parse(JSON.stringify(word_timestamps)) : undefined;
+      // Transcribe avatar for word timestamps (if not already done)
 
       if (!wordTimestamps || wordTimestamps.length === 0) {
         console.log(`🎤 [RENDER] No word timestamps found, transcribing avatar...`);
@@ -150,8 +153,32 @@ export const renderWorker = new Worker<RenderJobData>(
 
           console.log(`✅ [RENDER] Transcription complete: ${wordTimestamps.length} words`);
         } catch (error) {
-          console.warn(`⚠️ [RENDER] Transcription failed:`, error);
+          // PRODUCTION HARDENING: Record transcription failure in job metadata
+          // This allows users to see the error and understand degraded video quality
+          const errorMessage = error instanceof Error ? error.message : String(error);
+
+          console.warn(`⚠️ [RENDER] Transcription failed:`, errorMessage);
           console.warn(`   Continuing with time-based pacing (fallback)`);
+
+          // Store error in job_metadata for visibility
+          await db.query(
+            `UPDATE news_jobs
+             SET job_metadata = jsonb_set(
+               COALESCE(job_metadata, '{}'::jsonb),
+               '{transcription_error}',
+               to_jsonb($1::text)
+             ),
+             job_metadata = jsonb_set(
+               COALESCE(job_metadata, '{}'::jsonb),
+               '{transcription_fallback}',
+               'true'::jsonb
+             )
+             WHERE id = $2`,
+            [errorMessage, jobId]
+          );
+
+          console.log(`💾 [RENDER] Transcription error recorded in job metadata`);
+
           wordTimestamps = undefined;
         }
       } else {
@@ -221,61 +248,74 @@ export const renderWorker = new Worker<RenderJobData>(
         console.warn(`   Job will complete without thumbnail`);
       }
 
-      // 6. Update job in database with RELATIVE PATH (for portability) and thumbnail
-      await db.query(
-        `UPDATE news_jobs
-         SET final_video_url = $1,
-             status = $2,
-             thumbnail_url = $3,
-             thumbnail_generated_at = $4
-         WHERE id = $5`,
-        [finalVideoPath, 'completed', thumbnailUrl, thumbnailGeneratedAt, jobId]
-      );
+      // PRODUCTION HARDENING: Update job status and metrics in transaction
+      // This ensures job state and metrics are updated atomically
+      const metrics = await withTransaction(async (client) => {
+        // Transition job state with advisory lock
+        const transitioned = await transitionJobState(client, jobId, 'rendering', 'completed');
 
-      // 7. Calculate total image generation time from generation_history
-      const imageGenTimeResult = await db.query(
-        `SELECT COALESCE(SUM(generation_time_ms), 0) as total_image_gen_time_ms
-         FROM generation_history
-         WHERE job_id = $1 AND success = true`,
-        [jobId]
-      );
+        if (!transitioned) {
+          throw new Error('Failed to transition job to completed (unexpected state or already completed)');
+        }
 
-      const totalImageGenTimeMs = parseInt(imageGenTimeResult.rows[0].total_image_gen_time_ms);
+        // Update job with video URL and thumbnail
+        await client.query(
+          `UPDATE news_jobs
+           SET final_video_url = $1,
+               thumbnail_url = $2,
+               thumbnail_generated_at = $3
+           WHERE id = $4`,
+          [finalVideoPath, thumbnailUrl, thumbnailGeneratedAt, jobId]
+        );
 
-      // 7. Calculate total processing time (from job creation to completion)
-      const totalTimeResult = await db.query(
-        `SELECT EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000 as total_processing_time_ms
-         FROM news_jobs
-         WHERE id = $1`,
-        [jobId]
-      );
+        // Calculate total image generation time from generation_history
+        const imageGenTimeResult = await client.query(
+          `SELECT COALESCE(SUM(generation_time_ms), 0) as total_image_gen_time_ms
+           FROM generation_history
+           WHERE job_id = $1 AND success = true`,
+          [jobId]
+        );
 
-      const totalProcessingTimeMs = Math.round(parseFloat(totalTimeResult.rows[0].total_processing_time_ms));
+        const totalImageGenTimeMs = parseInt(imageGenTimeResult.rows[0].total_image_gen_time_ms);
 
-      // 9. Update job_metrics with all timing data
-      await db.query(
-        `UPDATE job_metrics
-         SET render_time_ms = $1,
-             final_video_size_bytes = $2,
-             final_video_duration_seconds = $3,
-             total_image_gen_time_ms = $4,
-             total_processing_time_ms = $5
-         WHERE job_id = $6`,
-        [
-          renderTimeMs,
-          renderResult.sizeInBytes,
-          renderResult.durationInSeconds,
-          totalImageGenTimeMs,
-          totalProcessingTimeMs,
-          jobId,
-        ]
-      );
+        // Calculate total processing time (from job creation to completion)
+        const totalTimeResult = await client.query(
+          `SELECT EXTRACT(EPOCH FROM (updated_at - created_at)) * 1000 as total_processing_time_ms
+           FROM news_jobs
+           WHERE id = $1`,
+          [jobId]
+        );
+
+        const totalProcessingTimeMs = Math.round(parseFloat(totalTimeResult.rows[0].total_processing_time_ms));
+
+        // Update job_metrics with all timing data
+        await client.query(
+          `UPDATE job_metrics
+           SET render_time_ms = $1,
+               final_video_size_bytes = $2,
+               final_video_duration_seconds = $3,
+               total_image_gen_time_ms = $4,
+               total_processing_time_ms = $5
+           WHERE job_id = $6`,
+          [
+            renderTimeMs,
+            renderResult.sizeInBytes,
+            renderResult.durationInSeconds,
+            totalImageGenTimeMs,
+            totalProcessingTimeMs,
+            jobId,
+          ]
+        );
+
+        // Return metrics for logging
+        return { totalImageGenTimeMs, totalProcessingTimeMs };
+      });
 
       console.log(`💾 [RENDER] Job ${jobId} marked as completed`);
       console.log(`📊 [RENDER] Metrics updated:`);
       console.log(`   - Render time: ${(renderTimeMs / 1000).toFixed(1)}s`);
-      console.log(`   - Image generation total: ${(totalImageGenTimeMs / 1000).toFixed(1)}s`);
-      console.log(`   - Total processing: ${(totalProcessingTimeMs / 1000).toFixed(1)}s`);
+      console.log(`   - Image generation total: ${(metrics.totalImageGenTimeMs / 1000).toFixed(1)}s`);
+      console.log(`   - Total processing: ${(metrics.totalProcessingTimeMs / 1000).toFixed(1)}s`);
       console.log(`   - Video size: ${(renderResult.sizeInBytes / 1024 / 1024).toFixed(2)} MB`);
       if (thumbnailUrl) {
         console.log(`   - Thumbnail: Generated`);

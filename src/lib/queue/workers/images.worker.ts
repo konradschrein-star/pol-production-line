@@ -3,6 +3,7 @@ import { Worker, Job } from 'bullmq';
 import { redisOptions } from '../index';
 import { queueAvatarAutomation } from '../queues';
 import { db } from '../../db';
+import { transitionJobStateStandalone } from '../../db/transactions';
 import { WhiskAPIClient } from '../../whisk/api';
 import { WhiskReferenceImages } from '../../whisk/types';
 import { writeFileSync } from 'fs';
@@ -335,18 +336,17 @@ export const imagesWorker = new Worker<ImageJobData>(
         // All scenes done → check avatar mode
         const avatarMode = process.env.AVATAR_MODE || 'manual';
 
-        // Use database-level locking to prevent race condition
-        // Only update if job is still in 'generating_images' state
-        const updateResult = await db.query(
-          `UPDATE news_jobs
-           SET status = $1, updated_at = NOW()
-           WHERE id = $2 AND status = 'generating_images'
-           RETURNING id`,
-          ['review_assets', jobId]
+        // PRODUCTION HARDENING: Use advisory lock-based state transition to prevent race conditions
+        // Multiple workers may complete their scenes simultaneously and all try to transition
+        // Only one worker will succeed in acquiring the lock and transitioning the state
+        const transitioned = await transitionJobStateStandalone(
+          jobId,
+          'generating_images',
+          'review_assets'
         );
 
         // Check if this worker won the race to update the status
-        if (updateResult.rowCount === 0) {
+        if (!transitioned) {
           console.log(`⏭️  [IMAGES] Job ${jobId} already transitioned by another worker`);
           return {
             success: true,

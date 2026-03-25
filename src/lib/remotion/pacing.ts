@@ -38,22 +38,45 @@ export interface TranscriptPacingInput {
  * @param fps - Frames per second (default: 30)
  * @returns Scene timing information
  */
+/**
+ * Validate pacing algorithm inputs to prevent division by zero
+ */
+function validatePacingInput(
+  avatarDurationSeconds: number,
+  sceneCount: number,
+  fps: number
+): void {
+  if (avatarDurationSeconds <= 0) {
+    throw new Error(`Invalid avatar duration: ${avatarDurationSeconds}s (must be > 0)`);
+  }
+  if (sceneCount <= 0) {
+    throw new Error(`Invalid scene count: ${sceneCount} (must be > 0)`);
+  }
+  if (fps <= 0) {
+    throw new Error(`Invalid FPS: ${fps} (must be > 0)`);
+  }
+}
+
 export function calculateScenePacing(
   avatarDurationSeconds: number,
   sceneCount: number,
   fps: number = 30
 ): PacingResult {
-  const HOOK_DURATION_SECONDS = 15;
+  // CRITICAL: Validate inputs to prevent division by zero
+  validatePacingInput(avatarDurationSeconds, sceneCount, fps);
+
+  const HOOK_DURATION_SECONDS = 30; // FIXED: First 30 SECONDS (not percentage)
   const HOOK_INTERVAL_SECONDS = 1.5;
 
   console.log(`\n📐 [Pacing] Calculating scene timing...`);
   console.log(`   Avatar duration: ${avatarDurationSeconds}s`);
   console.log(`   Scene count: ${sceneCount}`);
   console.log(`   FPS: ${fps}`);
+  console.log(`   Hook duration: ${HOOK_DURATION_SECONDS}s (first 30 seconds)`);
 
   // Edge case: Video shorter than hook duration
   if (avatarDurationSeconds <= HOOK_DURATION_SECONDS) {
-    console.log(`⚠️  [Pacing] Video shorter than hook duration (${HOOK_DURATION_SECONDS}s)`);
+    console.log(`⚠️  [Pacing] Video shorter than hook duration (${HOOK_DURATION_SECONDS.toFixed(1)}s)`);
     console.log(`   Using uniform ${HOOK_INTERVAL_SECONDS}s intervals for all scenes`);
 
     const sceneTiming: SceneTiming[] = [];
@@ -82,15 +105,17 @@ export function calculateScenePacing(
   }
 
   // Standard case: Hook + Body
-  const hookSceneCount = Math.floor(HOOK_DURATION_SECONDS / HOOK_INTERVAL_SECONDS);
+  // Distribute scenes proportionally based on time
+  const hookRatio = HOOK_DURATION_SECONDS / avatarDurationSeconds;
+  const hookSceneCount = Math.floor(sceneCount * hookRatio);
   const bodySceneCount = sceneCount - hookSceneCount;
 
-  console.log(`   Hook scenes (0-${HOOK_DURATION_SECONDS}s): ${hookSceneCount} @ ${HOOK_INTERVAL_SECONDS}s each`);
-  console.log(`   Body scenes (${HOOK_DURATION_SECONDS}s+): ${bodySceneCount}`);
+  console.log(`   Hook scenes (0-${HOOK_DURATION_SECONDS.toFixed(1)}s): ${hookSceneCount} @ ${HOOK_INTERVAL_SECONDS}s each`);
+  console.log(`   Body scenes (${HOOK_DURATION_SECONDS.toFixed(1)}s+): ${bodySceneCount}`);
 
-  // All scenes are hook scenes
+  // CRITICAL GUARD: All scenes are hook scenes (bodySceneCount <= 0)
   if (bodySceneCount <= 0) {
-    console.log(`   All scenes fit in hook period`);
+    console.log(`   All scenes fit in hook period (bodySceneCount=${bodySceneCount})`);
 
     const sceneTiming: SceneTiming[] = [];
     let currentFrame = 0;
@@ -117,7 +142,7 @@ export function calculateScenePacing(
     };
   }
 
-  // Calculate body scene duration
+  // Calculate body scene duration (SAFE: bodySceneCount > 0 guaranteed by guard above)
   const remainingTime = avatarDurationSeconds - HOOK_DURATION_SECONDS;
   const bodyIntervalSeconds = remainingTime / bodySceneCount;
 
@@ -158,8 +183,23 @@ export function calculateScenePacing(
   // Final frame count should match avatar duration
   const totalFrames = Math.round(avatarDurationSeconds * fps);
 
+  // CRITICAL FIX: Adjust last scene to fill exactly to the end (handle rounding errors)
+  if (sceneTiming.length > 0) {
+    const lastScene = sceneTiming[sceneTiming.length - 1];
+    const currentEndFrame = lastScene.startFrame + lastScene.durationInFrames;
+
+    if (currentEndFrame !== totalFrames) {
+      const adjustment = totalFrames - currentEndFrame;
+      console.log(`🔧 [Pacing] Adjusting last scene by ${adjustment} frames to fill video exactly`);
+
+      lastScene.durationInFrames = totalFrames - lastScene.startFrame;
+      lastScene.durationInSeconds = lastScene.durationInFrames / fps;
+    }
+  }
+
   console.log(`✅ [Pacing] Calculated ${sceneCount} scenes`);
   console.log(`   Total duration: ${avatarDurationSeconds}s (${totalFrames} frames)`);
+  console.log(`   Coverage: Frame 0 to ${totalFrames} (NO GAPS)`);
 
   return {
     totalDurationInFrames: totalFrames,
@@ -194,9 +234,9 @@ export function calculateTranscriptBasedPacing(
   }
 
   // Phase boundaries
-  const hookEndTime = avatarDurationSeconds * 0.3; // 30% mark
+  const hookEndTime = Math.min(30, avatarDurationSeconds); // First 30 seconds OR full video if shorter
 
-  console.log(`   Hook phase: 0s - ${hookEndTime.toFixed(1)}s (30%)`);
+  console.log(`   Hook phase: 0s - ${hookEndTime.toFixed(1)}s (first 30s)`);
 
   // Separate words into hook and body phases
   const hookWords = wordTimestamps.filter(w => w.start < hookEndTime);
@@ -291,6 +331,7 @@ export function calculateTranscriptBasedPacing(
   }
 
   // ===== BODY PHASE: 1 image per 1-2 sentences =====
+  // CRITICAL GUARD: Prevent division by zero if no sentences or no target scenes
   if (bodySentences.length > 0 && targetBodyScenes > 0) {
     const sentencesPerScene = bodySentences.length / targetBodyScenes;
 
@@ -357,6 +398,12 @@ export function calculateTranscriptBasedPacing(
     // Calculate duration for this scene, ensuring we fill the entire video
     const remainingFrames = totalFrames - currentFrame;
     const remainingScenes = sceneCount - i;
+
+    // CRITICAL GUARD: Prevent division by zero if no remaining scenes
+    if (remainingScenes <= 0) {
+      console.error(`⚠️ [Pacing] Unexpected state: remainingScenes=${remainingScenes} at index ${i}`);
+      break;
+    }
 
     // Distribute remaining frames evenly across remaining scenes
     const durationInFrames = Math.round(remainingFrames / remainingScenes);

@@ -3,8 +3,11 @@ import { Worker } from 'bullmq';
 import { redisConnection } from '../src/lib/queue';
 import { analyzeWorker } from '../src/lib/queue/workers/analyze.worker';
 import { imagesWorker } from '../src/lib/queue/workers/images.worker';
+import { avatarWorker } from '../src/lib/queue/workers/avatar.worker';
 import { renderWorker } from '../src/lib/queue/workers/render.worker';
 import { initStorage } from '../src/lib/storage/local';
+import { initQueueRecovery } from '../src/lib/queue/recovery';
+import { queueAnalyze, queueImages, queueRender, queueAvatarAutomation } from '../src/lib/queue/queues';
 
 (async () => {
   console.log('🚀 Starting BullMQ workers...');
@@ -15,11 +18,23 @@ import { initStorage } from '../src/lib/storage/local';
   console.log('📁 Initializing local storage...');
   await initStorage();
 
+  // PRODUCTION HARDENING: Initialize queue recovery system
+  console.log('🔧 Initializing queue recovery system...');
+  await initQueueRecovery([queueAnalyze, queueImages, queueRender, queueAvatarAutomation]);
+
   // Phase 2: Analyze worker (IMPLEMENTED)
   console.log('✅ Analyze worker loaded');
 
   // Phase 3: Images worker (IMPLEMENTED)
   console.log('✅ Images worker loaded');
+
+  // Phase 4: Avatar automation worker (IMPLEMENTED - OPTIONAL)
+  const avatarMode = process.env.AVATAR_MODE || 'manual';
+  if (avatarMode === 'automated') {
+    console.log('✅ Avatar automation worker loaded (mode: automated)');
+  } else {
+    console.log('ℹ️  Avatar automation worker loaded (mode: manual - worker idle)');
+  }
 
   // Phase 5: Render worker (IMPLEMENTED)
   console.log('✅ Render worker loaded');
@@ -27,6 +42,7 @@ import { initStorage } from '../src/lib/storage/local';
   console.log('\n✅ Workers started:');
   console.log('   - queue_analyze: Ready (LIVE - AI Script Analyst)');
   console.log('   - queue_images: Ready (LIVE - Playwright Image Generator)');
+  console.log(`   - queue_avatar_automation: Ready (${avatarMode === 'automated' ? 'LIVE' : 'IDLE'} - HeyGen Python Automation)`);
   console.log('   - queue_render: Ready (LIVE - Remotion Video Renderer)');
 
   // Keep process running
@@ -45,6 +61,7 @@ import { initStorage } from '../src/lib/storage/local';
       await Promise.all([
         analyzeWorker.close(),
         imagesWorker.close(),
+        avatarWorker.close(),
         renderWorker.close(),
       ]);
       console.log('✅ Workers shut down');
