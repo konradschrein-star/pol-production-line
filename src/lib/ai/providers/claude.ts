@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { AIProvider, AIAnalysisOutput, AIAnalysisOutputSchema } from '../types';
 import { SCRIPT_ANALYZER_SYSTEM_PROMPT, SCRIPT_ANALYZER_USER_PROMPT } from '../prompts/script-analyzer';
+import { segmentScript } from '../script-segmenter';
 
 export class ClaudeProvider implements AIProvider {
   private client: Anthropic;
@@ -8,20 +9,34 @@ export class ClaudeProvider implements AIProvider {
   constructor(apiKey: string) {
     this.client = new Anthropic({
       apiKey: apiKey,
+      timeout: 60000, // 60 second timeout for API requests
     });
   }
 
   async analyzeScript(rawScript: string): Promise<AIAnalysisOutput> {
+    // Segment the script into sentences with narrative context
+    const segmentedScript = segmentScript(rawScript);
+
+    // Delegate to analyzeScriptWithContext using default prompts
+    const systemPrompt = SCRIPT_ANALYZER_SYSTEM_PROMPT();
+    const userPrompt = SCRIPT_ANALYZER_USER_PROMPT(segmentedScript);
+    return this.analyzeScriptWithContext(systemPrompt, userPrompt);
+  }
+
+  async analyzeScriptWithContext(
+    systemPrompt: string,
+    userPrompt: string
+  ): Promise<AIAnalysisOutput> {
     try {
       const response = await this.client.messages.create({
         model: 'claude-3-5-sonnet-20241022',
         max_tokens: 4096,
         temperature: 0.7,
-        system: SCRIPT_ANALYZER_SYSTEM_PROMPT,
+        system: systemPrompt,
         messages: [
           {
             role: 'user',
-            content: SCRIPT_ANALYZER_USER_PROMPT(rawScript),
+            content: userPrompt,
           },
         ],
       });

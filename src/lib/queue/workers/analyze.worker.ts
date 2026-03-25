@@ -1,8 +1,12 @@
+import 'dotenv/config';
 import { Worker, Job } from 'bullmq';
 import { redisOptions } from '../index';
 import { queueImages } from '../queues';
 import { db } from '../../db';
 import { createAIProvider, ProviderType } from '../../ai';
+import { stylePresetManager } from '../../style-presets/manager';
+import { SCRIPT_ANALYZER_SYSTEM_PROMPT, SCRIPT_ANALYZER_USER_PROMPT } from '../../ai/prompts/script-analyzer';
+import { segmentScript } from '../../ai/script-segmenter';
 
 interface AnalyzeJobData {
   jobId: string;
@@ -23,15 +27,60 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
     const analysisStartTime = Date.now();
 
     try {
-      // Update job status to analyzing
+      // 1. Segment the script into sentences with narrative context
+      console.log(`📄 [ANALYZE] Segmenting script into sentences...`);
+      const segmentedScript = segmentScript(rawScript);
+      console.log(`✅ [ANALYZE] Script segmented: ${segmentedScript.length} sentences`);
+      segmentedScript.slice(0, 3).forEach((s, i) => {
+        console.log(`   - Sentence ${i}: "${s.text.substring(0, 50)}..." [${s.narrativePosition}]`);
+      });
+
+      // 2. Fetch style preset if job has one
+      let styleContext: any = undefined;
+      let stylePresetName = '';
+
+      const jobStyleResult = await db.query(
+        'SELECT style_preset_id FROM news_jobs WHERE id = $1',
+        [jobId]
+      );
+
+      if (jobStyleResult.rows[0]?.style_preset_id) {
+        const presetId = jobStyleResult.rows[0].style_preset_id;
+        console.log(`📐 [ANALYZE] Job uses style preset: ${presetId}`);
+
+        try {
+          // Build rich context from style preset
+          const styleContextStr = await stylePresetManager.buildStyleContext(presetId);
+          const preset = await stylePresetManager.getById(presetId);
+          stylePresetName = preset?.name || '';
+
+          // Parse style context into structured format for prompt
+          styleContext = {
+            visualStyle: styleContextStr,
+          };
+
+          console.log(`✅ [ANALYZE] Style context loaded (${styleContextStr.length} chars)`);
+        } catch (error) {
+          console.warn(`⚠️ [ANALYZE] Failed to load style context:`, error);
+          // Continue without style context
+        }
+      }
+
+      // 3. Update job status to analyzing
       await db.query(
         'UPDATE news_jobs SET status = $1 WHERE id = $2',
         ['analyzing', jobId]
       );
 
-      // Call AI provider with specified type
+      // 4. Call AI provider with segmented script and style-enhanced prompts
       const provider = createAIProvider(providerType);
-      const analysis = await provider.analyzeScript(rawScript);
+
+      // Create enhanced prompts with segmented script and style context
+      const systemPrompt = SCRIPT_ANALYZER_SYSTEM_PROMPT(styleContext);
+      const userPrompt = SCRIPT_ANALYZER_USER_PROMPT(segmentedScript, stylePresetName || undefined);
+
+      // Call provider with enhanced prompts
+      const analysis = await provider.analyzeScriptWithContext(systemPrompt, userPrompt);
 
       // Record analysis timing
       const analysisTimeMs = Date.now() - analysisStartTime;
@@ -39,24 +88,37 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
       console.log(`✅ [ANALYZE] AI analysis complete:`);
       console.log(`   - Scenes generated: ${analysis.scenes.length}`);
 
-      // Insert scenes into news_scenes
-      for (const scene of analysis.scenes) {
-        await db.query(
-          `INSERT INTO news_scenes
-           (job_id, scene_order, image_prompt, ticker_headline, image_url, generation_status)
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [
-            jobId,
-            scene.id,
-            scene.image_prompt,
-            scene.ticker_headline,
-            null, // image_url starts as null
-            'pending',
-          ]
-        );
-      }
+      // Insert scenes into news_scenes using bulk INSERT ... RETURNING
+      // Now includes sentence_text, narrative_position, shot_type, visual_continuity_notes
+      const sceneValues = analysis.scenes.map((scene, idx) =>
+        `($1, $${idx * 9 + 2}, $${idx * 9 + 3}, $${idx * 9 + 4}, $${idx * 9 + 5}, $${idx * 9 + 6}, $${idx * 9 + 7}, $${idx * 9 + 8}, $${idx * 9 + 9}, $${idx * 9 + 10})`
+      ).join(', ');
 
-      console.log(`💾 [ANALYZE] Stored ${analysis.scenes.length} scenes in database`);
+      const flatValues: any[] = [jobId];
+      analysis.scenes.forEach(scene => {
+        flatValues.push(
+          scene.id,                                                         // scene_order
+          scene.image_prompt,                                               // image_prompt
+          scene.ticker_headline,                                            // ticker_headline
+          'pending',                                                        // generation_status
+          scene.sentence_text || '',                                        // sentence_text (NEW)
+          scene.narrative_position || 'development',                        // narrative_position (NEW)
+          scene.shot_type || 'medium',                                      // shot_type (NEW)
+          scene.visual_continuity_notes || null,                            // visual_continuity_notes (NEW)
+          scene.scene_context ? JSON.stringify(scene.scene_context) : null  // scene_context (deprecated)
+        );
+      });
+
+      const sceneResult = await db.query(
+        `INSERT INTO news_scenes
+         (job_id, scene_order, image_prompt, ticker_headline, generation_status,
+          sentence_text, narrative_position, shot_type, visual_continuity_notes, scene_context)
+         VALUES ${sceneValues}
+         RETURNING id, image_prompt`,
+        flatValues
+      );
+
+      console.log(`💾 [ANALYZE] Stored ${sceneResult.rows.length} scenes in database (bulk insert)`);
 
       // Create job_metrics record with analysis timing
       await db.query(
@@ -70,18 +132,13 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
 
       console.log(`📊 [ANALYZE] Metrics recorded: ${analysisTimeMs}ms for ${analysis.scenes.length} scenes`);
 
-      // Update job status to generating_images
+      // Update job status to generating_images AND save avatar_script
       await db.query(
-        'UPDATE news_jobs SET status = $1 WHERE id = $2',
-        ['generating_images', jobId]
+        'UPDATE news_jobs SET status = $1, avatar_script = $2 WHERE id = $3',
+        ['generating_images', rawScript, jobId]
       );
 
-      // Queue all scenes to queue_images
-      const sceneResult = await db.query(
-        'SELECT id, image_prompt FROM news_scenes WHERE job_id = $1 ORDER BY scene_order',
-        [jobId]
-      );
-
+      // Queue all scenes to queue_images (using RETURNING data directly, no re-query needed)
       for (const scene of sceneResult.rows) {
         await queueImages.add('generate-image', {
           sceneId: scene.id,

@@ -1,6 +1,7 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AIProvider, AIAnalysisOutput, AIAnalysisOutputSchema } from '../types';
 import { SCRIPT_ANALYZER_SYSTEM_PROMPT, SCRIPT_ANALYZER_USER_PROMPT } from '../prompts/script-analyzer';
+import { segmentScript } from '../script-segmenter';
 
 export class GoogleProvider implements AIProvider {
   private client: GoogleGenerativeAI;
@@ -10,16 +11,31 @@ export class GoogleProvider implements AIProvider {
   }
 
   async analyzeScript(rawScript: string): Promise<AIAnalysisOutput> {
+    // Segment the script into sentences with narrative context
+    const segmentedScript = segmentScript(rawScript);
+
+    // Delegate to analyzeScriptWithContext using default prompts
+    const systemPrompt = SCRIPT_ANALYZER_SYSTEM_PROMPT();
+    const userPrompt = SCRIPT_ANALYZER_USER_PROMPT(segmentedScript);
+    return this.analyzeScriptWithContext(systemPrompt, userPrompt);
+  }
+
+  async analyzeScriptWithContext(
+    systemPrompt: string,
+    userPrompt: string
+  ): Promise<AIAnalysisOutput> {
     try {
       const model = this.client.getGenerativeModel({
         model: 'gemini-2.5-flash', // Updated to latest model
         generationConfig: {
           temperature: 0.7,
-          responseMimeType: 'application/json',
+          // Note: responseMimeType not supported in all Gemini versions
+          // Relying on prompt instructions for JSON output instead
         },
       });
 
-      const prompt = `${SCRIPT_ANALYZER_SYSTEM_PROMPT}\n\n${SCRIPT_ANALYZER_USER_PROMPT(rawScript)}`;
+      // Google requires combining system and user prompts
+      const prompt = `${systemPrompt}\n\n${userPrompt}`;
 
       const result = await model.generateContent(prompt);
       const response = result.response;
