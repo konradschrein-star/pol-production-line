@@ -1,17 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cancelJobQueues } from '@/lib/queue/cleanup';
+import { jobIdParamsSchema, updateJobSchema, validateParams, validateBody, formatValidationErrors } from '@/lib/validation/schemas';
+import { sanitizeError, getErrorStatusCode } from '@/lib/errors/safe-errors';
+import { z } from 'zod';
 
 /**
  * GET /api/jobs/[id]
  * Fetch job with all scenes
+ * PRODUCTION HARDENING Phase 2: Added UUID validation
  */
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    // PRODUCTION HARDENING: Validate UUID parameter
+    const { id } = validateParams(jobIdParamsSchema, params);
 
     console.log(`📋 [API] Fetching job ${id}...`);
 
@@ -47,14 +52,16 @@ export async function GET(
     });
 
   } catch (error: unknown) {
-    console.error('❌ [API] Error fetching job:', error);
+    // PRODUCTION HARDENING: Handle validation errors and sanitize responses
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(formatValidationErrors(error), { status: 400 });
+    }
+
+    console.error('[API] Error fetching job:', error);
 
     return NextResponse.json(
-      {
-        error: 'Failed to fetch job',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
+      { error: sanitizeError(error) },
+      { status: getErrorStatusCode(error) }
     );
   }
 }
@@ -62,13 +69,15 @@ export async function GET(
 /**
  * DELETE /api/jobs/[id]
  * Hard delete job with queue cleanup
+ * PRODUCTION HARDENING Phase 2: Added UUID validation
  */
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    // PRODUCTION HARDENING: Validate UUID parameter
+    const { id } = validateParams(jobIdParamsSchema, params);
 
     console.log(`🗑️ [API] Deleting job ${id}...`);
 
@@ -103,14 +112,16 @@ export async function DELETE(
     });
 
   } catch (error: unknown) {
-    console.error('❌ [API] Delete job error:', error);
+    // PRODUCTION HARDENING: Handle validation errors and sanitize responses
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(formatValidationErrors(error), { status: 400 });
+    }
+
+    console.error('[API] Delete job error:', error);
 
     return NextResponse.json(
-      {
-        error: 'Failed to delete job',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
+      { error: sanitizeError(error) },
+      { status: getErrorStatusCode(error) }
     );
   }
 }
@@ -118,22 +129,27 @@ export async function DELETE(
 /**
  * PATCH /api/jobs/[id]
  * Edit job script (only allowed in pending or failed states)
+ * PRODUCTION HARDENING Phase 2: Added UUID and body validation
  */
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    // PRODUCTION HARDENING: Validate UUID parameter
+    const { id } = validateParams(jobIdParamsSchema, params);
+
+    // PRODUCTION HARDENING: Validate request body
     const body = await request.json();
-    const { raw_script } = body;
+    const validatedBody = await validateBody(updateJobSchema, body);
+    const { raw_script } = validatedBody;
 
     console.log(`✏️ [API] Editing job ${id}...`);
 
-    // Validate script
-    if (!raw_script || raw_script.length < 50 || raw_script.length > 10000) {
+    // Ensure raw_script is provided (optional in schema, but required for PATCH)
+    if (!raw_script) {
       return NextResponse.json(
-        { error: 'Script must be between 50 and 10,000 characters' },
+        { error: 'raw_script is required for job updates' },
         { status: 400 }
       );
     }
@@ -161,44 +177,61 @@ export async function PATCH(
       );
     }
 
-    // Update script and reset to pending if was failed
-    await db.query(
-      `UPDATE news_jobs
-       SET raw_script = $1,
-           status = 'pending',
-           error_message = NULL,
-           updated_at = NOW()
-       WHERE id = $2`,
-      [raw_script, id]
-    );
+    // Update script and reset job - use transaction for data consistency
+    const client = await db.getClient();
+    try {
+      await client.query('BEGIN');
 
-    // Delete any existing analysis artifacts
-    await db.query(
-      `UPDATE news_jobs
-       SET avatar_script = NULL,
-           avatar_mp4_url = NULL
-       WHERE id = $1`,
-      [id]
-    );
+      // Update script and reset to pending
+      await client.query(
+        `UPDATE news_jobs
+         SET raw_script = $1,
+             status = 'pending',
+             error_message = NULL,
+             updated_at = NOW()
+         WHERE id = $2`,
+        [raw_script, id]
+      );
 
-    await db.query(
-      'DELETE FROM news_scenes WHERE job_id = $1',
-      [id]
-    );
+      // Delete any existing analysis artifacts
+      await client.query(
+        `UPDATE news_jobs
+         SET avatar_script = NULL,
+             avatar_mp4_url = NULL,
+             avatar_duration_seconds = NULL
+         WHERE id = $1`,
+        [id]
+      );
+
+      // Delete all scenes for this job
+      await client.query(
+        'DELETE FROM news_scenes WHERE job_id = $1',
+        [id]
+      );
+
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
 
     console.log(`✅ [API] Job ${id} script updated and reset to pending`);
 
     return NextResponse.json({ success: true });
 
   } catch (error: unknown) {
-    console.error('❌ [API] Update job error:', error);
+    // PRODUCTION HARDENING: Handle validation errors and sanitize responses
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(formatValidationErrors(error), { status: 400 });
+    }
+
+    console.error('[API] Update job error:', error);
 
     return NextResponse.json(
-      {
-        error: 'Failed to update job',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
+      { error: sanitizeError(error) },
+      { status: getErrorStatusCode(error) }
     );
   }
 }

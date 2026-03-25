@@ -3,17 +3,23 @@ import { db } from '@/lib/db';
 import { saveBuffer } from '@/lib/storage/local';
 import { queueRender } from '@/lib/queue/queues';
 import { ErrorCode, createErrorResponse, logError } from '@/lib/errors/error-codes';
+import { transcribeAudio } from '@/lib/audio/transcribe';
+import { jobIdParamsSchema, validateParams, formatValidationErrors } from '@/lib/validation/schemas';
+import { sanitizeError, getErrorStatusCode } from '@/lib/errors/safe-errors';
+import { z } from 'zod';
 
 /**
  * POST /api/jobs/[id]/compile
  * Upload HeyGen avatar MP4 and queue job for final rendering
+ * PRODUCTION HARDENING Phase 2: Added UUID validation and enhanced file validation
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    // PRODUCTION HARDENING: Validate UUID parameter
+    const { id } = validateParams(jobIdParamsSchema, params);
 
     console.log(`🎬 [API] Compiling job ${id}...`);
 
@@ -32,11 +38,11 @@ export async function POST(
 
     const job = jobResult.rows[0];
 
-    // Check job is in review_assets state
-    if (job.status !== 'review_assets') {
+    // Check job is in review_assets or failed state (allow retry)
+    if (job.status !== 'review_assets' && job.status !== 'failed') {
       return NextResponse.json(
         {
-          error: 'Job must be in review_assets state to compile',
+          error: 'Job must be in review_assets or failed state to compile',
           currentStatus: job.status,
         },
         { status: 400 }
@@ -117,15 +123,39 @@ export async function POST(
     const filename = `${id}.mp4`;
     const localPath = await saveBuffer(buffer, 'avatars', filename);
 
-    // Update job with avatar LOCAL PATH and set status to rendering
-    await db.query(
-      'UPDATE news_jobs SET avatar_mp4_url = $1, status = $2 WHERE id = $3',
-      [localPath, 'rendering', id]
-    );
-
     console.log(`💾 [API] Avatar saved: ${localPath}`);
 
-    // Queue for rendering
+    // NEW: Transcribe audio for word-level timestamps
+    console.log(`🎙️  [API] Transcribing audio...`);
+
+    try {
+      const transcription = await transcribeAudio(localPath);
+
+      console.log(`✅ [API] Transcription complete: ${transcription.words.length} words`);
+      console.log(`   Text preview: ${transcription.text.substring(0, 100)}...`);
+
+      // Update job with avatar path and set status to rendering
+      await db.query(
+        'UPDATE news_jobs SET avatar_mp4_url = $1, status = $2 WHERE id = $3',
+        [localPath, 'rendering', id]
+      );
+
+    } catch (transcribeError) {
+      // Transcription failed - fall back to time-based pacing
+      console.error(`⚠️  [API] Transcription failed, using time-based pacing:`, transcribeError);
+
+      await db.query(
+        'UPDATE news_jobs SET avatar_mp4_url = $1, status = $2, error_message = $3 WHERE id = $4',
+        [
+          localPath,
+          'rendering',
+          `Transcription failed (falling back to time-based): ${transcribeError instanceof Error ? transcribeError.message : String(transcribeError)}`,
+          id
+        ]
+      );
+    }
+
+    // Queue for rendering (transcription done synchronously before this)
     await queueRender.add('render-video', {
       jobId: id,
     });
@@ -143,6 +173,11 @@ export async function POST(
     });
 
   } catch (error: unknown) {
+    // PRODUCTION HARDENING: Handle validation errors
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(formatValidationErrors(error), { status: 400 });
+    }
+
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
     // Determine error code based on error type
@@ -157,12 +192,14 @@ export async function POST(
 
     logError('API/Compile', errorCode, error);
 
+    // PRODUCTION HARDENING: Sanitize error message for client
     return NextResponse.json(
       {
         ...createErrorResponse(errorCode),
+        error: sanitizeError(error),
         details: process.env.NODE_ENV === 'development' ? errorMessage : undefined,
       },
-      { status: 500 }
+      { status: getErrorStatusCode(error) }
     );
   }
 }
