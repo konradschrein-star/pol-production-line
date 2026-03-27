@@ -125,9 +125,9 @@ export async function POST(
       });
     }
 
-    // Validate file type
+    // Validate file type (MIME type check)
     if (avatarFile.type !== 'video/mp4') {
-      logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, `Invalid type: ${avatarFile.type}`);
+      logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, `Invalid MIME type: ${avatarFile.type}`);
       return NextResponse.json(
         createErrorResponse(
           ErrorCode.AVATAR_UPLOAD_FAILED,
@@ -137,15 +137,15 @@ export async function POST(
       );
     }
 
-    // Validate file size (max 100MB)
-    const maxSize = 100 * 1024 * 1024; // 100MB
+    // Validate file size (max 50MB)
+    const maxSize = 50 * 1024 * 1024; // 50MB (reduced from 100MB for security)
     if (avatarFile.size > maxSize) {
       const sizeMB = (avatarFile.size / 1024 / 1024).toFixed(2);
       logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, `File too large: ${sizeMB}MB`);
       return NextResponse.json(
         createErrorResponse(
           ErrorCode.AVATAR_UPLOAD_FAILED,
-          `File too large (${sizeMB}MB). Maximum size is 100MB. Try compressing the video first.`
+          `File too large (${sizeMB}MB). Maximum size is 50MB. Please use the optimize-avatar.sh script to compress the file.`
         ),
         { status: 400 }
       );
@@ -156,6 +156,44 @@ export async function POST(
     // Convert File to Buffer
     const arrayBuffer = await avatarFile.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
+
+    // SECURITY: Validate MP4 magic bytes (file signature)
+    // MP4 files start with: 00 00 00 [14-20] 66 74 79 70 (ftyp box)
+    // Valid ftyp sizes: 0x14 (20), 0x18 (24), 0x1C (28), 0x20 (32)
+    if (buffer.length < 8) {
+      logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, 'File too small to be valid MP4');
+      return NextResponse.json(
+        createErrorResponse(
+          ErrorCode.AVATAR_UPLOAD_FAILED,
+          'File is too small to be a valid MP4 video. Please upload a valid avatar video.'
+        ),
+        { status: 400 }
+      );
+    }
+
+    const magicBytes = buffer.slice(0, 8);
+    const hasValidMagicBytes =
+      magicBytes[0] === 0x00 &&
+      magicBytes[1] === 0x00 &&
+      magicBytes[2] === 0x00 &&
+      (magicBytes[3] >= 0x14 && magicBytes[3] <= 0x20) && // ftyp box size (20-32 bytes)
+      magicBytes[4] === 0x66 && // 'f'
+      magicBytes[5] === 0x74 && // 't'
+      magicBytes[6] === 0x79 && // 'y'
+      magicBytes[7] === 0x70;   // 'p'
+
+    if (!hasValidMagicBytes) {
+      logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, 'Invalid MP4 file signature');
+      return NextResponse.json(
+        createErrorResponse(
+          ErrorCode.AVATAR_UPLOAD_FAILED,
+          'File does not appear to be a valid MP4 video (invalid file signature). Please upload a genuine MP4 file.'
+        ),
+        { status: 400 }
+      );
+    }
+
+    console.log(`✅ [API] File signature validated (MP4)`);
 
     // Save avatar to local storage
     const filename = `${id}.mp4`;

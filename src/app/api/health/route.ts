@@ -23,6 +23,11 @@ interface HealthStatus {
   };
   timestamp: string;
   uptime: number;
+  connectionPool?: {
+    total: number;
+    idle: number;
+    waiting: number;
+  };
 }
 
 export async function GET() {
@@ -42,6 +47,14 @@ export async function GET() {
   try {
     await db.query('SELECT 1');
     health.services.database = 'healthy';
+
+    // Add connection pool statistics
+    health.connectionPool = db.getPoolStats();
+
+    // Warn if connection pool is getting full
+    if (health.connectionPool.waiting > 0) {
+      console.warn(`⚠️ Connection pool has ${health.connectionPool.waiting} waiting connections`);
+    }
   } catch (error) {
     console.error('❌ Health check - Database error:', error);
     health.services.database = 'error';

@@ -5,32 +5,90 @@
  * - Transaction abstraction with automatic rollback
  * - Advisory locks for state machine transitions
  * - Prevents race conditions in BullMQ workers
+ * - Timeout protection to prevent connection leaks
  */
 
 import { PoolClient } from 'pg';
 import { db } from './index';
 
 /**
- * Execute a callback within a database transaction
+ * Default transaction timeout (30 seconds)
+ * Prevents connections from being held indefinitely
+ */
+const DEFAULT_TRANSACTION_TIMEOUT = 30000;
+
+/**
+ * Timeout error class for transaction timeouts
+ */
+export class TransactionTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Transaction exceeded timeout of ${timeoutMs}ms`);
+    this.name = 'TransactionTimeoutError';
+  }
+}
+
+/**
+ * Execute a callback within a database transaction with timeout protection
  * Automatically rolls back on error, commits on success
  *
  * @param callback - Async function receiving a database client
+ * @param timeoutMs - Maximum transaction duration in milliseconds (default: 30s)
  * @returns Result from the callback
+ * @throws TransactionTimeoutError if transaction exceeds timeout
  */
 export async function withTransaction<T>(
-  callback: (client: PoolClient) => Promise<T>
+  callback: (client: PoolClient) => Promise<T>,
+  timeoutMs: number = DEFAULT_TRANSACTION_TIMEOUT
 ): Promise<T> {
   const client = await db.getClient();
+  let timeoutId: NodeJS.Timeout | null = null;
+  let isTimedOut = false;
+
   try {
     await client.query('BEGIN');
-    const result = await callback(client);
+
+    // Create timeout promise
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        isTimedOut = true;
+        reject(new TransactionTimeoutError(timeoutMs));
+      }, timeoutMs);
+    });
+
+    // Race between callback and timeout
+    const result = await Promise.race([
+      callback(client),
+      timeoutPromise
+    ]);
+
+    // Clear timeout if callback completed first
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+
     await client.query('COMMIT');
-    return result;
+    return result as T;
   } catch (error) {
-    await client.query('ROLLBACK');
+    // Only attempt rollback if not timed out
+    // (timed out connections will be terminated by idle_in_transaction_session_timeout)
+    if (!isTimedOut) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('[DB] Rollback failed:', rollbackError);
+      }
+    }
     throw error;
   } finally {
-    client.release();
+    // Always clear timeout and release client
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    try {
+      client.release();
+    } catch (releaseError) {
+      console.error('[DB] Client release failed:', releaseError);
+    }
   }
 }
 

@@ -7,6 +7,7 @@ const pool = new Pool({
   connectionTimeoutMillis: 2000,
   statement_timeout: 30000, // 30s max query time
   query_timeout: 30000,
+  idle_in_transaction_session_timeout: 60000, // 60s max transaction time
   application_name: 'obsidian-news-desk',
 });
 
@@ -44,6 +45,36 @@ export const db = {
   },
 
   getClient: () => pool.connect(),
+
+  /**
+   * Health check - verifies database connectivity
+   * @returns true if database is healthy, false otherwise
+   */
+  async healthCheck(): Promise<boolean> {
+    try {
+      const result = await pool.query('SELECT 1 as health');
+      return result.rows[0]?.health === 1;
+    } catch (error) {
+      console.error('❌ [DB] Health check failed:', error);
+      return false;
+    }
+  },
+
+  /**
+   * Get pool statistics for monitoring
+   * @returns Pool statistics object
+   */
+  getPoolStats(): {
+    total: number;
+    idle: number;
+    waiting: number;
+  } {
+    return {
+      total: pool.totalCount,
+      idle: pool.idleCount,
+      waiting: pool.waitingCount,
+    };
+  },
 
   // Graceful shutdown
   async shutdown(): Promise<void> {

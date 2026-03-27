@@ -402,6 +402,7 @@ export function calculateTranscriptBasedPacing(
     } else {
       // More scenes than sentences: Split sentences
       const scenesPerSentence = Math.ceil(1 / sentencesPerScene);
+      let sceneIdx = 0; // Use explicit counter for consistent ID generation
 
       for (let sentenceIdx = 0; sentenceIdx < bodySentences.length; sentenceIdx++) {
         const sentence = bodySentences[sentenceIdx];
@@ -412,11 +413,13 @@ export function calculateTranscriptBasedPacing(
           const sceneStart = sentence.start + (i * sceneDuration);
 
           sceneTiming.push({
-            sceneId: `scene_${sceneTiming.length}`,
+            sceneId: `scene_${targetHookScenes + sceneIdx}`, // Use offset counter, not array length
             startFrame: Math.round(sceneStart * fps),
             durationInFrames: Math.round(sceneDuration * fps),
             durationInSeconds: sceneDuration,
           });
+
+          sceneIdx++; // Increment counter
 
           if (sceneTiming.length >= sceneCount) break;
         }

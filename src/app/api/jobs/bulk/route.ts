@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
+import { withTransaction } from '@/lib/db/transactions';
 import { cancelJobQueues } from '@/lib/queue/cleanup';
 
 /**
@@ -26,19 +27,32 @@ export async function POST(request: NextRequest) {
 
     switch (action) {
       case 'delete':
-        // Delete each job individually to handle queue cleanup
+        // Delete each job individually with proper locking to prevent race conditions
         for (const jobId of jobIds) {
           try {
-            const jobResult = await db.query(
-              'SELECT status FROM news_jobs WHERE id = $1',
-              [jobId]
-            );
+            await withTransaction(async (client) => {
+              // Lock the row with FOR UPDATE to prevent concurrent modifications
+              const jobResult = await client.query(
+                'SELECT status FROM news_jobs WHERE id = $1 FOR UPDATE',
+                [jobId]
+              );
 
-            if (jobResult.rows.length > 0) {
-              await cancelJobQueues(jobId, jobResult.rows[0].status);
-              await db.query('DELETE FROM news_jobs WHERE id = $1', [jobId]);
-              results.succeeded.push(jobId);
-            }
+              if (jobResult.rows.length > 0) {
+                const status = jobResult.rows[0].status;
+
+                // Cancel queue entries outside transaction (queue operations don't need locks)
+                // This is safe because we have the row lock
+                await cancelJobQueues(jobId, status);
+
+                // Delete the job (still holding the lock)
+                await client.query('DELETE FROM news_jobs WHERE id = $1', [jobId]);
+
+                results.succeeded.push(jobId);
+              } else {
+                // Job doesn't exist - consider it a success (idempotent delete)
+                results.succeeded.push(jobId);
+              }
+            });
           } catch (error) {
             results.failed.push({
               jobId,
@@ -49,34 +63,47 @@ export async function POST(request: NextRequest) {
         break;
 
       case 'cancel':
-        // Cancel each job
+        // Cancel each job with proper locking to prevent race conditions
         for (const jobId of jobIds) {
           try {
-            const jobResult = await db.query(
-              'SELECT status FROM news_jobs WHERE id = $1',
-              [jobId]
-            );
+            await withTransaction(async (client) => {
+              // Lock the row with FOR UPDATE to prevent concurrent modifications
+              const jobResult = await client.query(
+                'SELECT status FROM news_jobs WHERE id = $1 FOR UPDATE',
+                [jobId]
+              );
 
-            if (jobResult.rows.length > 0) {
-              const status = jobResult.rows[0].status;
+              if (jobResult.rows.length > 0) {
+                const status = jobResult.rows[0].status;
 
-              if (status !== 'completed' && status !== 'cancelled' && status !== 'failed') {
-                if (status !== 'review_assets') {
-                  await cancelJobQueues(jobId, status);
+                // Only cancel if job is not already in a terminal state
+                if (status !== 'completed' && status !== 'cancelled' && status !== 'failed') {
+                  // Cancel queue entries (safe because we hold the row lock)
+                  if (status !== 'review_assets') {
+                    await cancelJobQueues(jobId, status);
+                  }
+
+                  // Update job status to cancelled (still holding the lock)
+                  await client.query(
+                    `UPDATE news_jobs
+                     SET status = 'cancelled',
+                         cancellation_reason = 'Bulk cancelled by user',
+                         updated_at = NOW()
+                     WHERE id = $1`,
+                    [jobId]
+                  );
                 }
 
-                await db.query(
-                  `UPDATE news_jobs
-                   SET status = 'cancelled',
-                       cancellation_reason = 'Bulk cancelled by user',
-                       updated_at = NOW()
-                   WHERE id = $1`,
-                  [jobId]
-                );
+                results.succeeded.push(jobId);
+              } else {
+                // Job doesn't exist - log but don't fail
+                console.warn(`[BULK] Job ${jobId} not found during cancel operation`);
+                results.failed.push({
+                  jobId,
+                  error: 'Job not found',
+                });
               }
-
-              results.succeeded.push(jobId);
-            }
+            });
           } catch (error) {
             results.failed.push({
               jobId,

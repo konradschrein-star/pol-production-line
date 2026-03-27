@@ -61,16 +61,51 @@ export const NewsVideo: React.FC<NewsVideoProps> = ({
   console.log(`   Pacing timings: ${pacing.sceneTiming.length}`);
 
   // CRITICAL VALIDATION: Ensure scene count matches timing count
+  let finalPacing = pacing;
   if (scenes.length !== pacing.sceneTiming.length) {
     console.error(`❌ [NewsVideo] SCENE/TIMING COUNT MISMATCH!`);
     console.error(`   Database scenes: ${scenes.length}`);
     console.error(`   Pacing timings: ${pacing.sceneTiming.length}`);
-    console.error(`   This will cause incorrect scene-to-timing mapping!`);
+
+    // RECOVERY: Generate evenly-distributed fallback timings
+    console.warn(`⚠️ [NewsVideo] Generating fallback timings for ${scenes.length} scenes...`);
+
+    const totalDurationInFrames = Math.round(avatarDurationSeconds * fps);
+    const framesPerScene = Math.floor(totalDurationInFrames / scenes.length);
+    const remainingFrames = totalDurationInFrames - (framesPerScene * scenes.length);
+
+    const fallbackTimings: SceneTiming[] = [];
+    let currentFrame = 0;
+
+    for (let i = 0; i < scenes.length; i++) {
+      // Add extra frame to first N scenes to distribute remainder
+      const extraFrame = i < remainingFrames ? 1 : 0;
+      const duration = framesPerScene + extraFrame;
+
+      fallbackTimings.push({
+        sceneId: `scene_${i}`,
+        startFrame: currentFrame,
+        durationInFrames: duration,
+        startTimeSeconds: currentFrame / fps,
+        endTimeSeconds: (currentFrame + duration) / fps,
+      });
+
+      currentFrame += duration;
+    }
+
+    finalPacing = {
+      totalDurationInFrames,
+      hookScenes: 0,
+      bodyScenes: scenes.length,
+      sceneTiming: fallbackTimings,
+    };
+
+    console.log(`✅ [NewsVideo] Generated ${fallbackTimings.length} fallback timings`);
   }
 
   // Map scenes to timing with detailed logging
   const scenesWithTiming = sortedScenes.map((scene, index) => {
-    const timing = pacing.sceneTiming[index];
+    const timing = finalPacing.sceneTiming[index];
 
     console.log(`   [MAPPING] Scene ${index} (scene_order=${scene.scene_order}):`);
     console.log(`      Timing: Frame ${timing?.startFrame} - ${timing ? timing.startFrame + timing.durationInFrames - 1 : 'N/A'} (${timing?.durationInFrames || 0} frames)`);
@@ -78,6 +113,7 @@ export const NewsVideo: React.FC<NewsVideoProps> = ({
 
     if (!timing) {
       console.error(`      ❌ NO TIMING FOUND FOR SCENE ${index}!`);
+      throw new Error(`Scene ${index} has no timing data even after fallback generation. This is a critical bug.`);
     }
 
     return {
@@ -90,12 +126,12 @@ export const NewsVideo: React.FC<NewsVideoProps> = ({
   const headlines = sortedScenes.map(s => s.ticker_headline);
 
   console.log(`\n🎬 [NewsVideo] Rendering composition:`);
-  console.log(`   Total duration: ${avatarDurationSeconds}s (${pacing.totalDurationInFrames} frames)`);
+  console.log(`   Total duration: ${avatarDurationSeconds}s (${finalPacing.totalDurationInFrames} frames)`);
   console.log(`   Avatar aspect ratio: ${avatarAspectRatio?.toFixed(4) || 'not provided'} (${avatarWidth}x${avatarHeight})`);
   console.log(`   Scenes: ${scenes.length}`);
   console.log(`   Scenes with timing: ${scenesWithTiming.length}`);
-  console.log(`   Hook scenes: ${pacing.hookScenes} @ 1.5s`);
-  console.log(`   Body scenes: ${pacing.bodyScenes}`);
+  console.log(`   Hook scenes: ${finalPacing.hookScenes} @ 1.5s`);
+  console.log(`   Body scenes: ${finalPacing.bodyScenes}`);
 
   console.log(`\n🎥 [NewsVideo] Creating Sequences:`);
   scenesWithTiming.forEach((scene, index) => {
@@ -110,9 +146,9 @@ export const NewsVideo: React.FC<NewsVideoProps> = ({
     <AbsoluteFill style={{ backgroundColor: '#131313' }}>
       {/* Background Scenes with Ken Burns effect */}
       {scenesWithTiming.map((scene, index) => {
+        // This should never happen after fallback generation, but check anyway
         if (!scene.timing) {
-          console.error(`❌ [NewsVideo] Skipping scene ${index} - no timing data`);
-          return null;
+          throw new Error(`Scene ${index} (${scene.id}) has no timing data. This should be impossible after fallback generation.`);
         }
 
         return (
