@@ -1,7 +1,7 @@
 // Obsidian News Desk - Installation Wizard Logic
 
 let currentPage = 0;
-const totalPages = 6;
+const totalPages = 7; // Updated: Added Database page
 const wizardData = {
   storagePath: '',
   aiProvider: 'openai',
@@ -12,6 +12,12 @@ const wizardData = {
   whiskToken: '',
 };
 
+// Expose to window for React components
+window.wizardData = wizardData;
+window.currentPage = currentPage;
+window.nextPage = nextPage;
+window.prevPage = prevPage;
+
 // Page navigation
 function showPage(pageIndex) {
   const pages = document.querySelectorAll('.wizard-page');
@@ -20,8 +26,45 @@ function showPage(pageIndex) {
   });
 
   currentPage = pageIndex;
+  window.currentPage = currentPage;
   updateProgress();
   updateButtons();
+
+  // Mount React components based on page
+  mountReactComponentForPage(pageIndex);
+}
+
+// Mount React components for each page
+function mountReactComponentForPage(pageIndex) {
+  // Wait for React bundle to load
+  if (!window.mountWelcomeStep) {
+    console.warn('React mounting functions not yet available');
+    return;
+  }
+
+  switch (pageIndex) {
+    case 0: // Welcome
+      window.mountWelcomeStep();
+      break;
+    case 1: // Prerequisites (Docker)
+      window.mountPrerequisitesStep();
+      break;
+    case 2: // Storage
+      window.mountStorageStep();
+      break;
+    case 3: // API Config
+      window.mountApiConfigStep();
+      break;
+    case 4: // Database
+      window.mountDatabaseStep();
+      break;
+    case 5: // Installation
+      window.mountInstallationStep();
+      break;
+    case 6: // Complete
+      window.mountCompleteStep();
+      break;
+  }
 }
 
 function nextPage() {
@@ -469,9 +512,16 @@ async function launchApplication() {
 
 // Initialize wizard on page load
 document.addEventListener('DOMContentLoaded', () => {
-  showPage(0);
+  // Set default storage path
+  const username = window.electronAPI?.getUsername?.() || 'User';
+  wizardData.storagePath = `C:\\Users\\${username}\\ObsidianNewsDesk`;
 
-  // Set up event listeners
+  // Wait for React bundle to load, then show first page
+  setTimeout(() => {
+    showPage(0);
+  }, 100);
+
+  // Set up event listeners for footer buttons
   const prevBtn = document.getElementById('btn-prev');
   const nextBtn = document.getElementById('btn-next');
   const finishBtn = document.getElementById('btn-finish');
@@ -480,57 +530,5 @@ document.addEventListener('DOMContentLoaded', () => {
   if (nextBtn) nextBtn.addEventListener('click', nextPage);
   if (finishBtn) finishBtn.addEventListener('click', launchApplication);
 
-  // Page 1: Welcome
-  const getStartedBtn = document.getElementById('btn-get-started');
-  if (getStartedBtn) {
-    getStartedBtn.addEventListener('click', () => {
-      checkSystemRequirements();
-      setTimeout(() => nextPage(), 2000);
-    });
-  }
-
-  // Page 2: Docker
-  const checkDockerBtn = document.getElementById('btn-check-docker');
-  if (checkDockerBtn) {
-    checkDockerBtn.addEventListener('click', checkDocker);
-  }
-
-  // Page 3: Storage
-  const browseBtn = document.getElementById('btn-browse');
-  if (browseBtn) {
-    browseBtn.addEventListener('click', selectStoragePath);
-  }
-
-  const storageInput = document.getElementById('storage-path');
-  if (storageInput) {
-    storageInput.addEventListener('input', validateStoragePath);
-    // Set default path
-    setDefaultStoragePath();
-  }
-
-  // Page 4: API Keys
-  const providerSelect = document.getElementById('ai-provider');
-  if (providerSelect) {
-    providerSelect.addEventListener('change', updateAIProviderFields);
-    updateAIProviderFields();
-  }
-
-  const validateBtn = document.getElementById('btn-validate-key');
-  if (validateBtn) {
-    validateBtn.addEventListener('click', validateAPIKey);
-  }
-
-  const whiskInput = document.getElementById('whisk-token');
-  if (whiskInput) {
-    whiskInput.addEventListener('input', saveWhiskToken);
-  }
-
-  // Page 5: Installation
-  const startInstallBtn = document.getElementById('btn-start-install');
-  if (startInstallBtn) {
-    startInstallBtn.addEventListener('click', () => {
-      startInstallBtn.style.display = 'none';
-      startInstallation();
-    });
-  }
+  // NOTE: Page-specific event listeners removed - React components handle their own events
 });

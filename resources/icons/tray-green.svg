@@ -1,0 +1,6 @@
+<svg width="48" height="48" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
+  <!-- Green circle background -->
+  <circle cx="24" cy="24" r="22" fill="#10b981" stroke="#059669" stroke-width="2"/>
+  <!-- Play icon (triangle) -->
+  <path d="M18 14 L34 24 L18 34 Z" fill="white"/>
+</svg>

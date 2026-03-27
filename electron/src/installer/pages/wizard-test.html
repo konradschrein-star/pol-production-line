@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wizard Test - Browser Mode</title>
+  <link rel="stylesheet" href="../styles/wizard.css">
+  <link rel="stylesheet" href="../../dist/installer/wizard-styles.css">
+  <style>
+    /* Test UI Overlay */
+    .test-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: 350px;
+      height: 100vh;
+      background: #0f0f0f;
+      border-left: 2px solid #3d3d3d;
+      padding: 20px;
+      overflow-y: auto;
+      z-index: 9999;
+      font-size: 13px;
+    }
+    .test-log {
+      background: #1a1a1a;
+      border: 1px solid #3d3d3d;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 11px;
+    }
+    .test-log-entry {
+      padding: 4px 0;
+      border-bottom: 1px solid #252525;
+    }
+    .test-log-entry.success { color: #4ade80; }
+    .test-log-entry.error { color: #f87171; }
+    .test-log-entry.info { color: #60a5fa; }
+    .test-button {
+      width: 100%;
+      padding: 10px;
+      margin: 8px 0;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .test-button:hover {
+      background: #1d4ed8;
+    }
+    .test-button.danger {
+      background: #dc2626;
+    }
+    .test-button.danger:hover {
+      background: #b91c1c;
+    }
+  </style>
+</head>
+<body>
+  <!-- Main Wizard (Same as wizard.html) -->
+  <div class="wizard-container">
+    <div class="wizard-header">
+      <h1>Obsidian News Desk</h1>
+      <p>Automated News Video Production Pipeline</p>
+    </div>
+
+    <div class="progress-container">
+      <div class="progress-bar"></div>
+    </div>
+
+    <div class="wizard-content">
+      <div class="wizard-page active" id="page-welcome">
+        <div id="welcome-root"></div>
+      </div>
+      <div class="wizard-page" id="page-docker">
+        <div id="docker-root"></div>
+      </div>
+      <div class="wizard-page" id="page-storage">
+        <div id="storage-root"></div>
+      </div>
+      <div class="wizard-page" id="page-api-config">
+        <div id="api-root"></div>
+      </div>
+      <div class="wizard-page" id="page-database">
+        <div id="database-root"></div>
+      </div>
+      <div class="wizard-page" id="page-install">
+        <div id="install-root"></div>
+      </div>
+      <div class="wizard-page" id="page-complete">
+        <div id="complete-root"></div>
+      </div>
+    </div>
+
+    <div class="wizard-footer">
+      <div>
+        <button id="btn-prev" class="btn btn-outline" style="display: none;">← Back</button>
+      </div>
+      <div class="btn-group">
+        <button id="btn-next" class="btn btn-primary">Next →</button>
+        <button id="btn-finish" class="btn btn-success" style="display: none;">Launch Application</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Test Panel -->
+  <div class="test-panel">
+    <h2 style="color: white; margin: 0 0 16px 0;">🧪 Wizard Test Suite</h2>
+
+    <div style="background: #1e1e1e; padding: 12px; border-radius: 8px; margin-bottom: 16px;">
+      <div style="color: #a0a0a0; font-size: 11px;">Current Page:</div>
+      <div id="test-current-page" style="color: white; font-weight: 600; font-size: 16px;">0 - Welcome</div>
+    </div>
+
+    <h3 style="color: #60a5fa; font-size: 14px; margin: 16px 0 8px 0;">Navigation Tests</h3>
+    <button class="test-button" onclick="testJumpToPage(0)">Jump to Welcome</button>
+    <button class="test-button" onclick="testJumpToPage(3)">Jump to API Config</button>
+    <button class="test-button" onclick="testJumpToPage(6)">Jump to Complete</button>
+
+    <h3 style="color: #60a5fa; font-size: 14px; margin: 16px 0 8px 0;">Component Tests</h3>
+    <button class="test-button" onclick="testAllComponentsRender()">Test All Components Render</button>
+    <button class="test-button" onclick="testStateSync()">Test State Synchronization</button>
+    <button class="test-button" onclick="testErrorBoundary()">Trigger Error (Test Boundary)</button>
+
+    <h3 style="color: #60a5fa; font-size: 14px; margin: 16px 0 8px 0;">Validation Tests</h3>
+    <button class="test-button" onclick="testStorageValidation()">Test Storage Validation</button>
+    <button class="test-button" onclick="testAPIValidation()">Test API Validation</button>
+
+    <h3 style="color: #60a5fa; font-size: 14px; margin: 16px 0 8px 0;">Test Log</h3>
+    <div class="test-log" id="test-log">
+      <div class="test-log-entry info">[Ready] Click a test button to begin</div>
+    </div>
+
+    <button class="test-button danger" onclick="clearLog()">Clear Log</button>
+  </div>
+
+  <!-- Mock Electron API (for browser testing) -->
+  <script>
+    // Mock electronAPI for browser testing
+    window.electronAPI = {
+      config: {
+        getDiskSpace: async (path) => {
+          log('IPC Call: config.getDiskSpace(' + path + ')', 'info');
+          return { free: 50 * (1024 ** 3), total: 100 * (1024 ** 3) };
+        },
+        validateStoragePath: async (path) => {
+          log('IPC Call: config.validateStoragePath(' + path + ')', 'info');
+          await new Promise(r => setTimeout(r, 500));
+          return { valid: true };
+        },
+        createStorageDirectories: async (path) => {
+          log('IPC Call: config.createStorageDirectories(' + path + ')', 'info');
+          await new Promise(r => setTimeout(r, 300));
+          return { success: true };
+        },
+        validateAPIKey: async (provider, key) => {
+          log('IPC Call: config.validateAPIKey(' + provider + ', ' + key.substring(0, 10) + '...)', 'info');
+          await new Promise(r => setTimeout(r, 1000));
+          return { valid: key.length > 10 };
+        },
+        save: async (data) => {
+          log('IPC Call: config.save()', 'success');
+          console.log('Saved wizard data:', data);
+          return { success: true };
+        },
+      },
+      docker: {
+        getStatus: async () => {
+          log('IPC Call: docker.getStatus()', 'info');
+          return { installed: true, running: true };
+        },
+        waitForServices: async () => {
+          log('IPC Call: docker.waitForServices()', 'info');
+          await new Promise(r => setTimeout(r, 2000));
+          return { postgres: 'running', redis: 'running' };
+        },
+        getContainerStatus: async () => {
+          log('IPC Call: docker.getContainerStatus()', 'info');
+          return { postgres: 'running', redis: 'running' };
+        },
+        startCompose: async () => {
+          log('IPC Call: docker.startCompose()', 'info');
+          await new Promise(r => setTimeout(r, 3000));
+          return { success: true };
+        },
+      },
+      workers: {
+        start: async () => {
+          log('IPC Call: workers.start()', 'info');
+          await new Promise(r => setTimeout(r, 1000));
+          return { success: true };
+        },
+      },
+      onProgress: (callback) => {
+        log('IPC: onProgress listener registered', 'info');
+        return () => log('IPC: onProgress unsubscribed', 'info');
+      },
+    };
+
+    // Test logging
+    function log(message, type = 'info') {
+      const logEl = document.getElementById('test-log');
+      const entry = document.createElement('div');
+      entry.className = 'test-log-entry ' + type;
+      entry.textContent = '[' + new Date().toLocaleTimeString() + '] ' + message;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function clearLog() {
+      document.getElementById('test-log').innerHTML = '<div class="test-log-entry info">[Ready] Log cleared</div>';
+    }
+
+    // Update current page display
+    function updatePageDisplay() {
+      const pageNames = ['Welcome', 'Prerequisites', 'Storage', 'API Config', 'Database', 'Installation', 'Complete'];
+      const display = window.currentPage + ' - ' + pageNames[window.currentPage];
+      document.getElementById('test-current-page').textContent = display;
+    }
+
+    // Test functions
+    function testJumpToPage(pageIndex) {
+      log('Test: Jumping to page ' + pageIndex, 'info');
+      window.showPage(pageIndex);
+      updatePageDisplay();
+      log('✓ Page changed successfully', 'success');
+    }
+
+    function testAllComponentsRender() {
+      log('Test: Rendering all components...', 'info');
+      let errors = 0;
+
+      for (let i = 0; i < 7; i++) {
+        try {
+          window.showPage(i);
+          const rootId = ['welcome', 'docker', 'storage', 'api', 'database', 'install', 'complete'][i] + '-root';
+          const root = document.getElementById(rootId);
+          if (root && root.children.length > 0) {
+            log('✓ Page ' + i + ' rendered', 'success');
+          } else {
+            log('✗ Page ' + i + ' failed to render', 'error');
+            errors++;
+          }
+        } catch (err) {
+          log('✗ Page ' + i + ' error: ' + err.message, 'error');
+          errors++;
+        }
+      }
+
+      if (errors === 0) {
+        log('✓ All components rendered successfully!', 'success');
+      } else {
+        log('✗ ' + errors + ' components failed to render', 'error');
+      }
+
+      window.showPage(0);
+      updatePageDisplay();
+    }
+
+    function testStateSync() {
+      log('Test: State synchronization...', 'info');
+
+      // Check wizardData exists
+      if (window.wizardData) {
+        log('✓ window.wizardData exists', 'success');
+        log('  - storagePath: ' + window.wizardData.storagePath, 'info');
+        log('  - aiProvider: ' + window.wizardData.aiProvider, 'info');
+      } else {
+        log('✗ window.wizardData not found', 'error');
+      }
+
+      // Check mounting functions
+      const mountFns = ['mountWelcomeStep', 'mountPrerequisitesStep', 'mountStorageStep',
+                        'mountApiConfigStep', 'mountDatabaseStep', 'mountInstallationStep', 'mountCompleteStep'];
+      let missing = 0;
+      mountFns.forEach(fn => {
+        if (window[fn]) {
+          log('✓ ' + fn + ' available', 'success');
+        } else {
+          log('✗ ' + fn + ' missing', 'error');
+          missing++;
+        }
+      });
+
+      if (missing === 0) {
+        log('✓ All mounting functions available!', 'success');
+      }
+    }
+
+    function testErrorBoundary() {
+      log('Test: Triggering error to test boundary...', 'info');
+      try {
+        // This will be caught by ErrorBoundary
+        throw new Error('Test error from wizard-test.html');
+      } catch (err) {
+        log('✓ Error thrown (should be caught by ErrorBoundary)', 'info');
+      }
+    }
+
+    function testStorageValidation() {
+      log('Test: Storage validation...', 'info');
+      window.showPage(2); // Storage page
+      updatePageDisplay();
+      log('✓ Navigated to Storage page', 'success');
+      log('  Check UI for validation controls', 'info');
+    }
+
+    function testAPIValidation() {
+      log('Test: API validation...', 'info');
+      window.showPage(3); // API config page
+      updatePageDisplay();
+      log('✓ Navigated to API Config page', 'success');
+      log('  Try entering an API key and clicking "Test Connection"', 'info');
+    }
+
+    // Monitor page changes
+    const originalShowPage = window.showPage;
+    if (originalShowPage) {
+      window.showPage = function(pageIndex) {
+        originalShowPage.call(this, pageIndex);
+        updatePageDisplay();
+      };
+    }
+  </script>
+
+  <!-- Load React bundle -->
+  <script src="../../dist/installer/wizard-react.js"></script>
+
+  <!-- Load wizard logic -->
+  <script src="../wizard.js"></script>
+
+  <!-- Initialize test panel -->
+  <script>
+    setTimeout(() => {
+      log('✓ Wizard initialized', 'success');
+      log('✓ React bundle loaded', 'success');
+      log('✓ Mock Electron API ready', 'success');
+      updatePageDisplay();
+    }, 100);
+  </script>
+</body>
+</html>

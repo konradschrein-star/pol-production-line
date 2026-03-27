@@ -1,18 +1,26 @@
 // System tray integration with service status indicators
 // Provides quick access to common actions and service management
+//
+// PHASE 4 ENHANCEMENTS:
+// - Real icon assets (SVG/ICO with graceful fallback)
+// - Enhanced context menu with per-service status
+// - Health monitor event integration
+// - Resource usage in tooltip
 
-import { Tray, Menu, nativeImage, shell, BrowserWindow, app } from 'electron';
+import { Tray, Menu, nativeImage, shell, BrowserWindow, app, Notification } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { ServiceManager, ServiceStatus } from './services/manager';
 import logger from './logger';
 
-export type TrayIconState = 'green' | 'yellow' | 'red';
+export type TrayIconState = 'green' | 'yellow' | 'red' | 'gray';
 
 export class TrayManager {
   private tray: Tray | null = null;
   private serviceManager: ServiceManager;
   private currentState: TrayIconState = 'yellow';
   private mainWindow: BrowserWindow | null = null;
+  private statusInterval: NodeJS.Timeout | null = null;
 
   constructor(serviceManager: ServiceManager) {
     this.serviceManager = serviceManager;
@@ -24,21 +32,34 @@ export class TrayManager {
   init(mainWindow: BrowserWindow | null = null): void {
     this.mainWindow = mainWindow;
 
-    // For now, use a simple icon (in production, use actual icon files)
-    // We'll create proper icons in Phase 6
+    // Load initial icon
     const iconPath = this.getIconPath('yellow');
-    this.tray = new Tray(iconPath);
+    const icon = this.loadIcon(iconPath);
+    this.tray = new Tray(icon);
 
-    this.tray.setToolTip('Obsidian News Desk');
+    this.tray.setToolTip('Obsidian News Desk - Starting...');
 
     // Build context menu
     this.updateContextMenu();
 
     // Update status every 10 seconds
-    setInterval(() => this.updateStatus(), 10000);
+    this.statusInterval = setInterval(() => this.updateStatus(), 10000);
 
     // Initial status update
     this.updateStatus();
+
+    // Wire health monitor events (if available)
+    if (this.serviceManager.healthMonitor) {
+      this.serviceManager.healthMonitor.on('health:service-down', (service: string) => {
+        this.showNotification('Service Down', `${service} has stopped unexpectedly`, 'error');
+        this.updateStatus();
+      });
+
+      this.serviceManager.healthMonitor.on('health:service-up', (service: string) => {
+        this.showNotification('Service Recovered', `${service} is now running`, 'info');
+        this.updateStatus();
+      });
+    }
 
     logger.info('System tray initialized', 'tray');
   }
@@ -54,8 +75,12 @@ export class TrayManager {
       if (newState !== this.currentState) {
         this.currentState = newState;
         this.updateIcon(newState);
-        this.updateContextMenu();
       }
+
+      // Always update tooltip and menu (status details may change)
+      const tooltip = await this.buildTooltip();
+      this.tray?.setToolTip(tooltip);
+      await this.updateContextMenuWithStatus(status);
     } catch (error) {
       logger.error('Failed to update tray status', 'tray', { error });
     }
@@ -84,29 +109,108 @@ export class TrayManager {
   private updateIcon(state: TrayIconState): void {
     if (this.tray) {
       const iconPath = this.getIconPath(state);
-      this.tray.setImage(iconPath);
+      const icon = this.loadIcon(iconPath);
+      this.tray.setImage(icon);
     }
   }
 
   /**
-   * Get icon path for state (placeholder - will use real icons later)
+   * Build tooltip with service status and resource usage
+   */
+  private async buildTooltip(): Promise<string> {
+    try {
+      const status = await this.serviceManager.getStatus();
+      const lines = ['Obsidian News Desk'];
+
+      if (status.docker.running) {
+        lines.push(`Docker: ${status.docker.postgres ? '✓' : '✗'} Postgres, ${status.docker.redis ? '✓' : '✗'} Redis`);
+      } else {
+        lines.push('Docker: ✗ Not running');
+      }
+
+      if (status.workers.running && status.workers.pid) {
+        lines.push(`Workers: Running (PID ${status.workers.pid})`);
+      } else {
+        lines.push('Workers: ✗ Not running');
+      }
+
+      if (status.nextjs.running && status.nextjs.pid) {
+        lines.push(`Next.js: Running (PID ${status.nextjs.pid})`);
+      } else {
+        lines.push('Next.js: ✗ Not running');
+      }
+
+      return lines.join('\n');
+    } catch (err) {
+      return 'Obsidian News Desk';
+    }
+  }
+
+  /**
+   * Get icon path for state
+   * Tries multiple formats: .ico (Windows), .svg, .png
    */
   private getIconPath(state: TrayIconState): string {
-    // For now, return a simple path
-    // In Phase 6, we'll create actual colored icon variants
-    const iconName = `tray-${state}.png`;
-    return path.join(__dirname, '..', 'build', iconName);
+    const iconName = `tray-${state}`;
+    const baseDir = path.join(app.getAppPath(), 'resources', 'icons');
+
+    // Try formats in order of preference
+    const formats = ['.ico', '.svg', '.png'];
+
+    for (const format of formats) {
+      const iconPath = path.join(baseDir, iconName + format);
+      if (fs.existsSync(iconPath)) {
+        return iconPath;
+      }
+    }
+
+    // Fallback: Use app icon
+    logger.warn(`Tray icon not found: ${iconName}, using fallback`, 'tray');
+    return path.join(app.getAppPath(), 'resources', 'icon.png');
+  }
+
+  /**
+   * Load icon with graceful fallback
+   */
+  private loadIcon(iconPath: string): nativeImage {
+    try {
+      const icon = nativeImage.createFromPath(iconPath);
+      if (icon.isEmpty()) {
+        throw new Error('Icon is empty');
+      }
+      return icon;
+    } catch (err) {
+      logger.error(`Failed to load icon: ${iconPath}`, 'tray', { error: err });
+      // Return empty icon (Electron will use default)
+      return nativeImage.createEmpty();
+    }
   }
 
   /**
    * Update context menu
    */
   private updateContextMenu(): void {
+    // Call async version with default status
+    this.serviceManager.getStatus().then(status => {
+      this.updateContextMenuWithStatus(status);
+    }).catch(err => {
+      logger.error('Failed to get status for context menu', 'tray', { error: err });
+    });
+  }
+
+  /**
+   * Update context menu with service status (Phase 4 enhanced version)
+   */
+  private async updateContextMenuWithStatus(status: ServiceStatus): Promise<void> {
     if (!this.tray) return;
 
     const statusLabel = this.getStatusLabel();
 
     const contextMenu = Menu.buildFromTemplate([
+      {
+        label: '🎬 Obsidian News Desk',
+        enabled: false,
+      },
       {
         label: statusLabel,
         enabled: false,
@@ -118,8 +222,39 @@ export class TrayManager {
       },
       { type: 'separator' },
       {
-        label: 'Restart Services',
-        click: () => this.restartServices(),
+        label: 'Services',
+        submenu: [
+          {
+            label: `Docker: ${status.docker.running ? '✓ Running' : '✗ Stopped'}`,
+            enabled: false,
+          },
+          {
+            label: `  PostgreSQL: ${status.docker.postgres ? '✓ Running' : '✗ Stopped'}`,
+            enabled: false,
+          },
+          {
+            label: `  Redis: ${status.docker.redis ? '✓ Running' : '✗ Stopped'}`,
+            enabled: false,
+          },
+          {
+            label: `Next.js: ${status.nextjs.running ? '✓ Running' : '✗ Stopped'}${status.nextjs.pid ? ` (PID ${status.nextjs.pid})` : ''}`,
+            enabled: false,
+          },
+          {
+            label: `Workers: ${status.workers.running ? '✓ Running' : '✗ Stopped'}${status.workers.pid ? ` (PID ${status.workers.pid})` : ''}`,
+            enabled: false,
+          },
+          { type: 'separator' },
+          {
+            label: 'Restart All Services',
+            click: () => this.restartServices(),
+          },
+        ],
+      },
+      { type: 'separator' },
+      {
+        label: 'Stop Services',
+        click: () => this.stopServices(),
       },
       {
         label: 'View Logs',
@@ -183,10 +318,30 @@ export class TrayManager {
 
       await this.serviceManager.restartAll();
 
-      this.showNotification('Services Restarted', 'All services have been restarted successfully');
+      this.showNotification('Services Restarted', 'All services have been restarted successfully', 'info');
     } catch (error: any) {
       logger.error('Failed to restart services from tray', 'tray', { error: error.message });
       this.showNotification('Restart Failed', 'Failed to restart services. Check logs for details.', 'error');
+    }
+  }
+
+  /**
+   * Stop all services
+   */
+  private async stopServices(): Promise<void> {
+    logger.info('Stopping services from tray', 'tray');
+
+    try {
+      this.currentState = 'gray';
+      this.updateIcon('gray');
+      this.updateContextMenu();
+
+      await this.serviceManager.stopAll();
+
+      this.showNotification('Services Stopped', 'All services have been stopped gracefully', 'info');
+    } catch (error: any) {
+      logger.error('Failed to stop services from tray', 'tray', { error: error.message });
+      this.showNotification('Stop Failed', 'Failed to stop services. Check logs for details.', 'error');
     }
   }
 
@@ -229,15 +384,19 @@ export class TrayManager {
   }
 
   /**
-   * Show notification (balloon)
+   * Show notification using Electron Notification API
+   * Phase 4: Switched from displayBalloon to Notification API for better cross-platform support
    */
   showNotification(title: string, message: string, type: 'info' | 'error' = 'info'): void {
-    if (this.tray) {
-      this.tray.displayBalloon({
+    try {
+      new Notification({
         title,
-        content: message,
+        body: message,
+        silent: false,
         icon: this.getIconPath(type === 'error' ? 'red' : 'green'),
-      });
+      }).show();
+    } catch (err) {
+      logger.error('Failed to show notification', 'tray', { error: err });
     }
   }
 
@@ -252,9 +411,16 @@ export class TrayManager {
    * Destroy tray
    */
   destroy(): void {
+    if (this.statusInterval) {
+      clearInterval(this.statusInterval);
+      this.statusInterval = null;
+    }
+
     if (this.tray) {
       this.tray.destroy();
       this.tray = null;
     }
+
+    logger.info('System tray destroyed', 'tray');
   }
 }

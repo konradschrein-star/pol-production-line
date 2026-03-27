@@ -150,3 +150,10 @@ export function sendMessageToWorkers(message: any): boolean {
   }
   return false;
 }
+
+/**
+ * Get worker process reference (Phase 4: for graceful shutdown)
+ */
+export function getWorkerProcess(): ChildProcess | null {
+  return workerProcess;
+}
