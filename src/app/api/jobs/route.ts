@@ -14,13 +14,14 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
 
     // PRODUCTION HARDENING: Validate query parameters with Zod
+    // Convert null to undefined for optional fields
     const queryParams = validateQuery(jobFilterSchema, {
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
-      sort_by: searchParams.get('sortBy'),
-      sort_order: searchParams.get('sortOrder'),
-      status: searchParams.get('status'),
-      search: searchParams.get('search'),
+      page: searchParams.get('page') ?? undefined,
+      limit: searchParams.get('limit') ?? undefined,
+      sort_by: searchParams.get('sortBy') ?? undefined,
+      sort_order: searchParams.get('sortOrder') ?? undefined,
+      status: searchParams.get('status') ?? undefined,
+      search: searchParams.get('search') ?? undefined,
     });
 
     const { page, limit, sort_by, sort_order, status, search } = queryParams;
@@ -57,7 +58,18 @@ export async function GET(req: NextRequest) {
     const total = parseInt(countResult.rows[0].count);
 
     // Build main query with sorting (already validated by Zod)
-    let query = `SELECT * FROM news_jobs WHERE ${whereConditions} ORDER BY ${sort_by} ${sort_order.toUpperCase()}`;
+    // Join with news_scenes to get scene counts for progress calculation
+    let query = `
+      SELECT
+        j.*,
+        COUNT(s.id) AS total_scenes,
+        COUNT(s.image_url) AS completed_scenes
+      FROM news_jobs j
+      LEFT JOIN news_scenes s ON j.id = s.job_id
+      WHERE ${whereConditions}
+      GROUP BY j.id
+      ORDER BY j.${sort_by} ${sort_order.toUpperCase()}
+    `;
 
     // Add pagination
     query += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
@@ -66,8 +78,15 @@ export async function GET(req: NextRequest) {
     // Execute query
     const result = await db.query(query, params);
 
+    // Convert scene counts from strings to numbers
+    const jobs = result.rows.map(row => ({
+      ...row,
+      total_scenes: parseInt(row.total_scenes) || 0,
+      completed_scenes: parseInt(row.completed_scenes) || 0,
+    }));
+
     return NextResponse.json({
-      jobs: result.rows,
+      jobs,
       pagination: {
         page,
         limit,

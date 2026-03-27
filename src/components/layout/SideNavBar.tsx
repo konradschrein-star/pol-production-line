@@ -2,13 +2,16 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useState } from 'react';
 import Icon from '@/components/ui/Icon';
 
 export function SideNavBar() {
   const pathname = usePathname();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navLinks = [
     { href: '/broadcasts', label: 'Broadcasts', icon: 'sensors' },
+    { href: '/consoles', label: 'Consoles', icon: 'terminal' },
     { href: '/wiki', label: 'Wiki', icon: 'menu_book' },
     { href: '/analytics', label: 'Analytics', icon: 'analytics' },
     { href: '/personas', label: 'Personas', icon: 'group' },
@@ -17,8 +20,40 @@ export function SideNavBar() {
 
   const isActive = (href: string) => pathname?.startsWith(href);
 
+  // Close menu on navigation
+  const handleNavClick = () => {
+    setIsMobileMenuOpen(false);
+  };
+
   return (
-    <aside className="w-64 hidden md:flex flex-col bg-surface-container-lowest border-r border-outline-variant">
+    <>
+      {/* Mobile Menu Button */}
+      <button
+        onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+        className="md:hidden fixed top-4 left-4 z-50 p-3 bg-surface-container rounded-lg shadow-lg hover:bg-surface-container-high transition-colors"
+        aria-label="Toggle menu"
+      >
+        <Icon name={isMobileMenuOpen ? 'close' : 'menu'} size="md" />
+      </button>
+
+      {/* Mobile Overlay */}
+      {isMobileMenuOpen && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/60 z-30 backdrop-blur-sm"
+          onClick={() => setIsMobileMenuOpen(false)}
+        />
+      )}
+
+      {/* Sidebar */}
+      <aside
+        className={`
+          w-64 flex flex-col bg-surface-container-lowest border-r border-outline-variant
+          md:relative md:translate-x-0
+          fixed inset-y-0 left-0 z-40
+          transform transition-transform duration-300 ease-in-out
+          ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+        `}
+      >
       {/* Operator badge */}
       <div className="p-6 border-b border-outline-variant">
         <div className="flex items-center gap-3">
@@ -42,6 +77,7 @@ export function SideNavBar() {
           <Link
             key={link.href}
             href={link.href}
+            onClick={handleNavClick}
             className={`
               flex items-center gap-3 px-6 py-3
               font-bold uppercase text-[12px] tracking-wider
@@ -63,6 +99,7 @@ export function SideNavBar() {
       <div className="p-4 border-t border-outline-variant space-y-2">
         <Link
           href="/terminal"
+          onClick={handleNavClick}
           className="flex items-center gap-3 px-2 py-2 text-[11px] uppercase tracking-wide text-outline hover:text-white transition-colors"
         >
           <Icon name="code" size="sm" />
@@ -70,6 +107,7 @@ export function SideNavBar() {
         </Link>
         <Link
           href="/logs"
+          onClick={handleNavClick}
           className="flex items-center gap-3 px-2 py-2 text-[11px] uppercase tracking-wide text-outline hover:text-white transition-colors"
         >
           <Icon name="description" size="sm" />
@@ -77,6 +115,7 @@ export function SideNavBar() {
         </Link>
       </div>
     </aside>
+    </>
   );
 }
 

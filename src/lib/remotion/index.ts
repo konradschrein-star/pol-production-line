@@ -33,6 +33,7 @@ export const RemotionRoot: React.FC = () => {
         avatarWidth: 1080,
         avatarHeight: 1920,
         scenes: [],
+        wordTimestamps: undefined, // Optional: word-level timestamps for advanced pacing
       },
     },
     null

@@ -1,4 +1,6 @@
 import { execSync } from 'child_process';
+import { join } from 'path';
+import * as path from 'path';
 
 export interface VideoMetadata {
   duration: number;
@@ -22,8 +24,9 @@ export async function getVideoMetadata(videoUrl: string): Promise<VideoMetadata>
       filePath = videoUrl.replace('file:///', '');
     } else if (videoUrl.startsWith('http://localhost:9000')) {
       // Convert HTTP asset server URL back to file path
-      const ASSETS_ROOT = 'C:\\Users\\konra\\ObsidianNewsDesk';
-      filePath = ASSETS_ROOT + videoUrl.substring('http://localhost:9000'.length).replace(/\//g, '\\');
+      const ASSETS_ROOT = process.env.LOCAL_STORAGE_ROOT || 'C:\\Users\\konra\\ObsidianNewsDesk';
+      const urlPath = videoUrl.substring('http://localhost:9000'.length);
+      filePath = path.join(ASSETS_ROOT, urlPath);
     }
 
     // Get duration
@@ -79,8 +82,14 @@ export async function getVideoDuration(videoUrl: string): Promise<number> {
       filePath = videoUrl.replace('file:///', '');
     } else if (videoUrl.startsWith('http://localhost:9000')) {
       // Convert HTTP asset server URL back to file path
-      const ASSETS_ROOT = 'C:\\Users\\konra\\ObsidianNewsDesk';
-      filePath = ASSETS_ROOT + videoUrl.substring('http://localhost:9000'.length).replace(/\//g, '\\');
+      const ASSETS_ROOT = process.env.LOCAL_STORAGE_ROOT || 'C:\\Users\\konra\\ObsidianNewsDesk';
+      const urlPath = videoUrl.substring('http://localhost:9000'.length);
+      filePath = path.join(ASSETS_ROOT, urlPath);
+    } else if (!videoUrl.startsWith('http://') && !videoUrl.startsWith('https://') && !path.isAbsolute(videoUrl)) {
+      // Relative path - assume it's relative to public/ directory
+      // __dirname is src/lib/remotion/, so go up 3 levels to project root
+      const publicDir = join(__dirname, '../../../public');
+      filePath = join(publicDir, videoUrl);
     }
 
     const command = `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "${filePath}"`;

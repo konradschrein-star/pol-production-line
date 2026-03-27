@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tutorial - Obsidian News Desk</title>
+  <link rel="stylesheet" href="../styles/tutorial.css">
+</head>
+<body>
+  <div class="tutorial-container">
+    <!-- Header -->
+    <div class="tutorial-header">
+      <h1>Getting Started with Obsidian News Desk</h1>
+      <div class="progress-indicator">
+        <span id="progress-text">Page 1 of 5</span>
+      </div>
+    </div>
+
+    <!-- Tutorial Pages -->
+    <div class="tutorial-content">
+
+      <!-- Page 1: Welcome -->
+      <div class="tutorial-page active" id="tutorial-page-1">
+        <div class="tutorial-card">
+          <h2>Your First Broadcast in 5 Minutes</h2>
+          <p class="tutorial-subtitle">
+            Obsidian News Desk automates the entire video production pipeline - from script to final video.
+          </p>
+
+          <div class="workflow-diagram">
+            <div class="workflow-step">
+              <div class="step-icon">📝</div>
+              <div class="step-label">Script</div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+              <div class="step-icon">🤖</div>
+              <div class="step-label">AI Analysis</div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+              <div class="step-icon">🎨</div>
+              <div class="step-label">Image Gen</div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+              <div class="step-icon">✅</div>
+              <div class="step-label">Review</div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+              <div class="step-icon">🎭</div>
+              <div class="step-label">Avatar</div>
+            </div>
+            <div class="workflow-arrow">→</div>
+            <div class="workflow-step">
+              <div class="step-icon">🎬</div>
+              <div class="step-label">Render</div>
+            </div>
+          </div>
+
+          <div class="info-box">
+            <strong>Total Time:</strong> 25-40 minutes per video
+            <ul style="margin-top: 12px; margin-bottom: 0;">
+              <li>Script Analysis: 30-60 seconds</li>
+              <li>Image Generation: 15-20 minutes (8 scenes)</li>
+              <li>Avatar Creation: 2-3 minutes (manual)</li>
+              <li>Video Rendering: 2-3 minutes</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page 2: Keyboard Shortcuts -->
+      <div class="tutorial-page" id="tutorial-page-2">
+        <div class="tutorial-card">
+          <h2>Keyboard Shortcuts</h2>
+          <p class="tutorial-subtitle">
+            Speed up your workflow with these essential shortcuts
+          </p>
+
+          <div class="shortcuts-grid">
+            <div class="shortcut-item">
+              <div class="keyboard-keys">
+                <kbd>J</kbd> <span class="key-separator">/</span> <kbd>K</kbd>
+              </div>
+              <div class="shortcut-description">Navigate broadcasts (up/down)</div>
+            </div>
+
+            <div class="shortcut-item">
+              <div class="keyboard-keys">
+                <kbd>Enter</kbd>
+              </div>
+              <div class="shortcut-description">Open selected broadcast</div>
+            </div>
+
+            <div class="shortcut-item">
+              <div class="keyboard-keys">
+                <kbd>N</kbd>
+              </div>
+              <div class="shortcut-description">Create new broadcast</div>
+            </div>
+
+            <div class="shortcut-item">
+              <div class="keyboard-keys">
+                <kbd>R</kbd>
+              </div>
+              <div class="shortcut-description">Regenerate scene image</div>
+            </div>
+
+            <div class="shortcut-item">
+              <div class="keyboard-keys">
+                <kbd>?</kbd>
+              </div>
+              <div class="shortcut-description">Show all shortcuts</div>
+            </div>
+
+            <div class="shortcut-item">
+              <div class="keyboard-keys">
+                <kbd>Esc</kbd>
+              </div>
+              <div class="shortcut-description">Close modal / Go back</div>
+            </div>
+          </div>
+
+          <div class="interactive-demo" id="keyboard-demo">
+            <p style="margin-bottom: 16px;">
+              <strong>Try it now:</strong> Press <kbd>J</kbd> or <kbd>K</kbd> to test keyboard detection
+            </p>
+            <div id="demo-feedback" class="demo-feedback"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Page 3: Whisk Token Setup -->
+      <div class="tutorial-page" id="tutorial-page-3">
+        <div class="tutorial-card">
+          <h2>Whisk Token Setup (Automated)</h2>
+          <p class="tutorial-subtitle">
+            The included Chrome extension automatically captures and refreshes your Whisk token every 50 minutes.
+          </p>
+
+          <div class="info-box" style="margin-bottom: 24px;">
+            <strong>✨ Recommended Method:</strong> Chrome Extension (Automatic)
+            <br>No manual token copying needed! The extension handles everything.
+          </div>
+
+          <h3 style="font-size: 18px; margin-bottom: 16px; color: #ffffff;">Install Chrome Extension (2 minutes)</h3>
+
+          <div class="setup-steps">
+            <div class="setup-step">
+              <div class="step-number">1</div>
+              <div class="step-content">
+                <h4>Open Chrome Extensions</h4>
+                <p>Navigate to <code>chrome://extensions/</code> in Chrome or Edge</p>
+              </div>
+            </div>
+
+            <div class="setup-step">
+              <div class="step-number">2</div>
+              <div class="step-content">
+                <h4>Enable Developer Mode</h4>
+                <p>Toggle "Developer mode" in the top-right corner</p>
+              </div>
+            </div>
+
+            <div class="setup-step">
+              <div class="step-number">3</div>
+              <div class="step-content">
+                <h4>Load Extension</h4>
+                <p>Click "Load unpacked" → Select folder:<br>
+                <code>C:\Program Files\Obsidian News Desk\resources\chrome-extension\</code></p>
+              </div>
+            </div>
+
+            <div class="setup-step">
+              <div class="step-number">4</div>
+              <div class="step-content">
+                <h4>Visit Whisk & Generate Test Image</h4>
+                <p>Go to <a href="https://labs.google.com/fx/tools/whisk" target="_blank">labs.google.com/fx/tools/whisk</a><br>
+                Generate any test image (the extension captures the token automatically)</p>
+              </div>
+            </div>
+
+            <div class="setup-step">
+              <div class="step-number">5</div>
+              <div class="step-content">
+                <h4>Verify Token Captured</h4>
+                <p>Click the extension icon (green key) in Chrome toolbar<br>
+                Should show "Token Active" with green indicator</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-box" style="margin-top: 24px;">
+            <strong>🔄 Auto-Refresh:</strong>
+            The extension automatically refreshes your token every 50 minutes. No manual action needed!
+          </div>
+
+          <details style="margin-top: 24px; padding: 16px; background: #1e1e1e; border-radius: 8px;">
+            <summary style="cursor: pointer; font-weight: 600; color: #e0e0e0;">
+              Alternative: Manual Token Setup (Not Recommended)
+            </summary>
+            <div style="margin-top: 16px; padding-left: 16px; border-left: 2px solid #3b82f6;">
+              <p style="font-size: 13px; color: #a0a0a0; margin-bottom: 12px;">
+                If you prefer manual setup:
+              </p>
+              <ol style="font-size: 13px; color: #a0a0a0; margin-left: 20px;">
+                <li>Open <a href="https://labs.google.com/fx/tools/whisk" target="_blank">labs.google.com/whisk</a></li>
+                <li>Press F12 → Network tab</li>
+                <li>Generate a test image</li>
+                <li>Find request to "generateImage"</li>
+                <li>Copy Authorization header: "Bearer XXX..."</li>
+                <li>Paste in app Settings → Whisk Token</li>
+              </ol>
+              <p style="font-size: 13px; color: #a0a0a0; margin-top: 12px;">
+                <strong>Note:</strong> Manual tokens expire every hour and need to be updated.
+              </p>
+            </div>
+          </details>
+        </div>
+      </div>
+
+      <!-- Page 4: HeyGen Avatar Guide -->
+      <div class="tutorial-page" id="tutorial-page-4">
+        <div class="tutorial-card">
+          <h2>HeyGen Avatar Workflow</h2>
+          <p class="tutorial-subtitle">
+            Avatar generation is a manual step - the system will launch HeyGen for you when ready.
+          </p>
+
+          <div class="setup-steps">
+            <div class="setup-step">
+              <div class="step-number">1</div>
+              <div class="step-content">
+                <h4>Wait for Review Assets State</h4>
+                <p>After images are generated, the job will pause for human review</p>
+              </div>
+            </div>
+
+            <div class="setup-step">
+              <div class="step-number">2</div>
+              <div class="step-content">
+                <h4>Click "LAUNCH HEYGEN BROWSER"</h4>
+                <p>The system will open HeyGen.com in your browser</p>
+              </div>
+            </div>
+
+            <div class="setup-step">
+              <div class="step-number">3</div>
+              <div class="step-content">
+                <h4>Generate Avatar</h4>
+                <p>Paste the avatar script, select your avatar, and generate the video</p>
+              </div>
+            </div>
+
+            <div class="setup-step">
+              <div class="step-number">4</div>
+              <div class="step-content">
+                <h4>Download .MP4 File</h4>
+                <p>Download the generated avatar video (usually 30-60 MB)</p>
+              </div>
+            </div>
+
+            <div class="setup-step">
+              <div class="step-number">5</div>
+              <div class="step-content">
+                <h4>Optimize if Needed</h4>
+                <p>If file is >10MB, use <code>optimize-avatar.sh</code> script to reduce size</p>
+              </div>
+            </div>
+
+            <div class="setup-step">
+              <div class="step-number">6</div>
+              <div class="step-content">
+                <h4>Upload via Storyboard Editor</h4>
+                <p>Drag and drop your avatar file, then click "COMPILE & RENDER"</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-box">
+            <strong>💡 Optimization Tip:</strong>
+            Large avatar files can cause Remotion timeout. Always optimize files >10MB for best performance.
+          </div>
+        </div>
+      </div>
+
+      <!-- Page 5: Ready to Start -->
+      <div class="tutorial-page" id="tutorial-page-5">
+        <div class="tutorial-card">
+          <h2>You're All Set!</h2>
+          <p class="tutorial-subtitle">
+            Everything is configured and ready. Let's create your first broadcast.
+          </p>
+
+          <div class="checklist">
+            <div class="checklist-item">
+              <span class="check-icon">✅</span>
+              <span class="check-label">Whisk token configured</span>
+            </div>
+            <div class="checklist-item">
+              <span class="check-icon">✅</span>
+              <span class="check-label">HeyGen account ready</span>
+            </div>
+            <div class="checklist-item">
+              <span class="check-icon">✅</span>
+              <span class="check-label">Storage path set</span>
+            </div>
+            <div class="checklist-item">
+              <span class="check-icon">✅</span>
+              <span class="check-label">Services running</span>
+            </div>
+            <div class="checklist-item">
+              <span class="check-icon">✅</span>
+              <span class="check-label">Keyboard shortcuts learned</span>
+            </div>
+          </div>
+
+          <div class="next-steps">
+            <h3>Next Steps</h3>
+            <ol>
+              <li>Write or paste your news script</li>
+              <li>Click "Create New Broadcast"</li>
+              <li>Wait ~20 minutes for images to generate</li>
+              <li>Review images in storyboard editor</li>
+              <li>Generate avatar on HeyGen</li>
+              <li>Upload avatar and click "Compile & Render"</li>
+              <li>Download your finished video!</li>
+            </ol>
+          </div>
+
+          <button id="btn-finish-tutorial" class="btn btn-primary btn-large">
+            Create My First Broadcast
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Navigation Footer -->
+    <div class="tutorial-footer">
+      <button id="btn-skip" class="btn btn-ghost">Skip Tutorial</button>
+
+      <div class="nav-buttons">
+        <button id="btn-back" class="btn btn-secondary" disabled>Back</button>
+        <button id="btn-next" class="btn btn-primary">Next</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../tutorial.js"></script>
+</body>
+</html>

@@ -7,6 +7,7 @@ import { transcribeAudio } from '@/lib/audio/transcribe';
 import { jobIdParamsSchema, validateParams, formatValidationErrors } from '@/lib/validation/schemas';
 import { sanitizeError, getErrorStatusCode } from '@/lib/errors/safe-errors';
 import { z } from 'zod';
+import { makeRelativePath } from '@/lib/storage/path-resolver';
 
 /**
  * POST /api/jobs/[id]/compile
@@ -72,19 +73,56 @@ export async function POST(
       );
     }
 
-    // Get form data
-    const formData = await request.formData();
-    const avatarFile = formData.get('avatar_mp4') as File;
+    // Check if avatar already exists in database
+    const existingAvatarResult = await db.query(
+      'SELECT avatar_mp4_url FROM news_jobs WHERE id = $1',
+      [id]
+    );
+    const existingAvatarUrl = existingAvatarResult.rows[0]?.avatar_mp4_url;
 
-    if (!avatarFile) {
-      logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, 'No file provided');
+    // Check content-type to determine if this is a file upload or manual approval
+    const contentType = request.headers.get('content-type') || '';
+    const isFormData = contentType.includes('multipart/form-data');
+
+    // Get avatar file from form data (only if multipart)
+    let avatarFile: File | null = null;
+    if (isFormData) {
+      const formData = await request.formData();
+      avatarFile = formData.get('avatar_mp4') as File | null;
+    }
+
+    if (!avatarFile && !existingAvatarUrl) {
+      logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, 'No file provided and no existing avatar');
       return NextResponse.json(
         createErrorResponse(
           ErrorCode.AVATAR_UPLOAD_FAILED,
-          'No avatar MP4 file provided. Ensure the file field is named "avatar_mp4".'
+          'No avatar MP4 file provided and no existing avatar found. Please upload an avatar first.'
         ),
         { status: 400 }
       );
+    }
+
+    // If no new file provided, use existing avatar (manual approval)
+    if (!avatarFile && existingAvatarUrl) {
+      console.log(`✅ [API] Using existing avatar at ${existingAvatarUrl}`);
+
+      // Update status to rendering and queue
+      await db.query(
+        'UPDATE news_jobs SET status = $1 WHERE id = $2',
+        ['rendering', id]
+      );
+
+      await queueRender.add('render-video', { jobId: id });
+
+      console.log(`✅ [API] Job ${id} manually approved and queued for rendering`);
+
+      return NextResponse.json({
+        success: true,
+        message: 'Job manually approved and queued for rendering',
+        job_id: id,
+        avatar_url: existingAvatarUrl,
+        status: 'rendering',
+      });
     }
 
     // Validate file type
@@ -125,11 +163,21 @@ export async function POST(
 
     console.log(`💾 [API] Avatar saved: ${localPath}`);
 
+    // OPTIMIZATION DISABLED: OffthreadVideo uses FFmpeg frame extraction, no browser limitations
+    // Now supports full-quality HeyGen avatars of any size (even 40+ minute videos)
+    // No compression needed - maintains original quality for professional output
+    let finalAvatarPath = localPath;
+    console.log(`✅ [API] Using original avatar (no compression): ${(buffer.length / 1024 / 1024).toFixed(2)}MB`);
+    console.log(`   OffthreadVideo handles large files via FFmpeg frame extraction`);
+
     // NEW: Transcribe audio for word-level timestamps
     console.log(`🎙️  [API] Transcribing audio...`);
 
+    // Store relative path for database (portable across machines)
+    const relativePath = makeRelativePath(finalAvatarPath);
+
     try {
-      const transcription = await transcribeAudio(localPath);
+      const transcription = await transcribeAudio(finalAvatarPath);
 
       console.log(`✅ [API] Transcription complete: ${transcription.words.length} words`);
       console.log(`   Text preview: ${transcription.text.substring(0, 100)}...`);
@@ -137,7 +185,7 @@ export async function POST(
       // Update job with avatar path and set status to rendering
       await db.query(
         'UPDATE news_jobs SET avatar_mp4_url = $1, status = $2 WHERE id = $3',
-        [localPath, 'rendering', id]
+        [relativePath, 'rendering', id]
       );
 
     } catch (transcribeError) {
@@ -147,7 +195,7 @@ export async function POST(
       await db.query(
         'UPDATE news_jobs SET avatar_mp4_url = $1, status = $2, error_message = $3 WHERE id = $4',
         [
-          localPath,
+          relativePath,
           'rendering',
           `Transcription failed (falling back to time-based): ${transcribeError instanceof Error ? transcribeError.message : String(transcribeError)}`,
           id
@@ -166,10 +214,11 @@ export async function POST(
       success: true,
       message: 'Avatar saved to local storage and job queued for rendering',
       job_id: id,
-      avatar_url: localPath,
+      avatar_url: relativePath,
       status: 'rendering',
       file_name: avatarFile.name,
       file_size: avatarFile.size,
+      optimized: finalAvatarPath !== localPath,
     });
 
   } catch (error: unknown) {

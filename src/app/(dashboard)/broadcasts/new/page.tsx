@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
@@ -9,15 +9,37 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { createJob } from '@/lib/utils/api';
+import { StylePresetSelector } from '@/components/broadcast/StylePresetSelector';
 
 export default function NewBroadcastPage() {
   const router = useRouter();
   const [script, setScript] = useState('');
-  const [provider, setProvider] = useState('openai');
+  const [provider, setProvider] = useState('google'); // Default to google, will be loaded from settings
+  const [stylePresetId, setStylePresetId] = useState(''); // Style preset for visual consistency
   const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+
+  // Load AI provider from settings on mount
+  useEffect(() => {
+    const loadProvider = async () => {
+      try {
+        const response = await fetch('/api/settings');
+        if (response.ok) {
+          const settings = await response.json();
+          if (settings.AI_PROVIDER) {
+            setProvider(settings.AI_PROVIDER);
+            console.log('📋 Loaded AI provider from settings:', settings.AI_PROVIDER);
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to load provider from settings, using default:', err);
+      }
+    };
+
+    loadProvider();
+  }, []);
 
   const handleAvatarDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -59,13 +81,19 @@ export default function NewBroadcastPage() {
     setError(null);
 
     try {
-      // Create FormData with script, avatar file, and AI provider
+      // Create FormData with script, avatar file, AI provider, style preset, and auto-approve flag
       const formData = new FormData();
       formData.append('raw_script', script);
       formData.append('provider', provider);
       formData.append('avatar', avatarFile);
+      if (stylePresetId) {
+        formData.append('style_preset_id', stylePresetId);
+      }
 
       console.log('📤 Submitting with provider:', provider);
+      if (stylePresetId) {
+        console.log('📐 Using style preset:', stylePresetId);
+      }
 
       const response = await fetch('/api/analyze', {
         method: 'POST',
@@ -129,6 +157,31 @@ export default function NewBroadcastPage() {
                   descriptions.
                 </p>
               </div>
+
+              <div>
+                <label className="flex items-center gap-2 text-sm font-semibold text-on-surface-variant mb-2">
+                  Visual Style Preset
+                  <a
+                    href="/docs/USER_GUIDE.md#style-presets"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-on-surface-variant hover:text-primary transition-colors"
+                    title="Learn about style presets"
+                  >
+                    <Icon name="help_outline" size="sm" />
+                  </a>
+                </label>
+                <StylePresetSelector
+                  value={stylePresetId}
+                  onChange={setStylePresetId}
+                />
+                <p className="mt-3 text-sm text-on-surface-variant leading-relaxed">
+                  Apply a consistent visual style to all generated images. This helps maintain a professional look across your entire broadcast.
+                </p>
+              </div>
+
+              {/* Auto-approve temporarily disabled due to backend issues */}
+              {/* TODO: Re-enable after fixing job_metadata column conflict */}
 
               <div>
                 <label className="block text-sm font-semibold text-on-surface-variant mb-2">

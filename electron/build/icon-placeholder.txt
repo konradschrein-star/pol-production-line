@@ -1,0 +1,34 @@
+# Icon Placeholder
+
+This directory should contain:
+
+1. **icon.ico** - Main application icon (256x256 pixels, .ico format)
+   - Used for: Application window, taskbar, desktop shortcut
+   - Recommended tool: https://www.convertico.com/ or GIMP
+
+2. **installerHeader.bmp** (Optional) - Installer header image (150x57 pixels, .bmp format)
+   - Used for: NSIS installer header
+
+## Quick Icon Generation
+
+### Option 1: Use Online Tool
+1. Create a 256x256 PNG image with your logo
+2. Convert to .ico at: https://www.convertico.com/
+3. Save as `icon.ico` in this directory
+
+### Option 2: Use ImageMagick
+```bash
+# Install ImageMagick first
+convert logo.png -resize 256x256 icon.ico
+```
+
+### Option 3: Use Placeholder
+For testing, you can use any .ico file temporarily. Windows 11 default icons work fine:
+```powershell
+copy C:\Windows\System32\shell32.dll icon.ico
+```
+
+## Temporary Workaround
+
+Until you have a proper icon, electron-builder will use a default icon.
+The app will still build successfully without custom icons.

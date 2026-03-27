@@ -39,7 +39,9 @@ interface SceneCardProps {
 export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProps) {
   const { toasts, showError, removeToast } = useToast();
   const [headline, setHeadline] = useState(scene.ticker_headline);
-  const [editing, setEditing] = useState(false);
+  const [prompt, setPrompt] = useState(scene.image_prompt);
+  const [editingHeadline, setEditingHeadline] = useState(false);
+  const [editingPrompt, setEditingPrompt] = useState(false);
   const [saving, setSaving] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -51,16 +53,33 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
   const sceneInputRef = useRef<HTMLInputElement>(null);
   const styleInput = useRef<HTMLInputElement>(null);
 
-  const handleSave = async () => {
+  const handleSaveHeadline = async () => {
     setSaving(true);
     try {
       await updateScene(scene.job_id, scene.id, {
         ticker_headline: headline,
       });
-      setEditing(false);
+      setEditingHeadline(false);
       onUpdate();
     } catch (error) {
-      console.error('Failed to update scene:', error);
+      console.error('Failed to update headline:', error);
+      showError(`Failed to save headline: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleSavePrompt = async () => {
+    setSaving(true);
+    try {
+      await updateScene(scene.job_id, scene.id, {
+        image_prompt: prompt,
+      });
+      setEditingPrompt(false);
+      onUpdate();
+    } catch (error) {
+      console.error('Failed to update prompt:', error);
+      showError(`Failed to save prompt: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setSaving(false);
     }
@@ -273,7 +292,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
               scene.generation_status === 'completed'
                 ? 'completed'
                 : scene.generation_status === 'generating'
-                ? 'analyzing'
+                ? 'generating_images'
                 : scene.generation_status === 'failed'
                 ? 'failed'
                 : 'pending'
@@ -353,14 +372,50 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
           </div>
         )}
 
-        {/* Image Prompt */}
+        {/* Image Prompt - NOW EDITABLE */}
         <div>
           <div className="text-xs font-medium text-on-surface-variant mb-2.5">
             Image Prompt
           </div>
-          <div className="text-sm text-on-surface leading-relaxed line-clamp-2">
-            {scene.image_prompt}
-          </div>
+          {editingPrompt ? (
+            <div className="space-y-3">
+              <textarea
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant rounded-lg text-sm text-on-surface resize-none focus:border-primary focus:outline-none"
+                rows={3}
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={handleSavePrompt}
+                  disabled={saving}
+                  className="flex-1"
+                >
+                  {saving ? 'Saving...' : 'Save'}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setPrompt(scene.image_prompt);
+                    setEditingPrompt(false);
+                  }}
+                  disabled={saving}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div
+              onClick={() => setEditingPrompt(true)}
+              className="text-sm text-on-surface cursor-pointer hover:text-primary transition-colors leading-relaxed p-2 -mx-2 rounded hover:bg-surface-container-low line-clamp-2"
+            >
+              {prompt}
+            </div>
+          )}
         </div>
 
         {/* Ticker Headline */}
@@ -368,7 +423,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
           <div className="text-xs font-medium text-on-surface-variant mb-2.5">
             Ticker Headline
           </div>
-          {editing ? (
+          {editingHeadline ? (
             <div className="space-y-3">
               <Input
                 value={headline}
@@ -380,7 +435,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
                 <Button
                   size="sm"
                   variant="primary"
-                  onClick={handleSave}
+                  onClick={handleSaveHeadline}
                   disabled={saving}
                   className="flex-1"
                 >
@@ -391,7 +446,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
                   variant="ghost"
                   onClick={() => {
                     setHeadline(scene.ticker_headline);
-                    setEditing(false);
+                    setEditingHeadline(false);
                   }}
                   disabled={saving}
                 >
@@ -401,7 +456,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
             </div>
           ) : (
             <div
-              onClick={() => setEditing(true)}
+              onClick={() => setEditingHeadline(true)}
               className="text-sm text-white cursor-pointer hover:text-primary transition-colors leading-relaxed p-2 -mx-2 rounded hover:bg-surface-container-low"
             >
               {headline}

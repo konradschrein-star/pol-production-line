@@ -1,0 +1,141 @@
+{
+  "avatarMp4Url": "avatars/test-avatar-99s.mp4",
+  "avatarDurationSeconds": 99,
+  "avatarAspectRatio": 0.5625,
+  "avatarWidth": 1080,
+  "avatarHeight": 1920,
+  "scenes": [
+    {
+      "id": "scene-1",
+      "image_url": "images/22cb35c2-7ff6-4401-8085-9fded39fc85d.jpg",
+      "ticker_headline": "BREAKING: SENATE PASSES LANDMARK CLIMATE BILL",
+      "scene_order": 1
+    },
+    {
+      "id": "scene-2",
+      "image_url": "images/5e933ff6-08b3-4a15-b899-6c30cd25b059.jpg",
+      "ticker_headline": "CLEAN ENERGY INNOVATION ACT MOVES FORWARD",
+      "scene_order": 2
+    },
+    {
+      "id": "scene-3",
+      "image_url": "images/ba935057-5b36-42d5-b41c-f714ee776663.jpg",
+      "ticker_headline": "HISTORIC CLIMATE VOTE: 68-32 PASSAGE",
+      "scene_order": 3
+    },
+    {
+      "id": "scene-4",
+      "image_url": "images/3b7f7e94-b195-4dd3-b40d-b70fc97da8da.jpg",
+      "ticker_headline": "ENVIRONMENTAL GROUPS HAIL MAJOR VICTORY",
+      "scene_order": 4
+    },
+    {
+      "id": "scene-5",
+      "image_url": "images/f5e9323e-48fd-4b4e-ae2e-550dcf6c912c.jpg",
+      "ticker_headline": "INDUSTRY LEADERS CAUTIOUSLY OPTIMISTIC",
+      "scene_order": 5
+    },
+    {
+      "id": "scene-6",
+      "image_url": "images/7921b031-8c39-4fa6-a550-68e232b801f2.jpg",
+      "ticker_headline": "$200 BILLION INVESTMENT IN RENEWABLE ENERGY",
+      "scene_order": 6
+    },
+    {
+      "id": "scene-7",
+      "image_url": "images/77e01515-90ff-42bd-9e58-1f3a5a6a1964.jpg",
+      "ticker_headline": "MAJOR INVESTMENTS IN WIND & SOLAR POWER",
+      "scene_order": 7
+    },
+    {
+      "id": "scene-8",
+      "image_url": "images/a70216af-70a5-40bc-a0b4-b36bf9c4d0b2.jpg",
+      "ticker_headline": "CRITICS TARGET NATURAL GAS SUBSIDIES",
+      "scene_order": 8
+    },
+    {
+      "id": "scene-9",
+      "image_url": "images/206fc5b2-ce18-4c35-8e29-93030fe82952.jpg",
+      "ticker_headline": "PRAGMATIC COMPROMISE SECURES PASSAGE",
+      "scene_order": 9
+    },
+    {
+      "id": "scene-10",
+      "image_url": "images/35a726e6-abc3-48c0-ba2f-11fec3e02673.jpg",
+      "ticker_headline": "TENSIONS ESCALATE IN SOUTH CHINA SEA",
+      "scene_order": 10
+    },
+    {
+      "id": "scene-11",
+      "image_url": "images/53becdac-c152-4473-8e33-2f2833e1cc91.jpg",
+      "ticker_headline": "THREE NATIONS CONDUCT OVERLAPPING EXERCISES",
+      "scene_order": 11
+    },
+    {
+      "id": "scene-12",
+      "image_url": "images/206a0687-19c0-4d93-8a03-cdfcc95970e9.jpg",
+      "ticker_headline": "US SEVENTH FLEET REPORTS CLOSE ENCOUNTERS",
+      "scene_order": 12
+    },
+    {
+      "id": "scene-13",
+      "image_url": "images/874eb257-a73e-4df0-978a-849a72b57bff.jpg",
+      "ticker_headline": "ALLIES CONCERNED OVER FREEDOM OF NAVIGATION",
+      "scene_order": 13
+    },
+    {
+      "id": "scene-14",
+      "image_url": "images/3ee19a84-c290-4487-a7d6-fdb9a80041c4.jpg",
+      "ticker_headline": "DIPLOMATIC CHANNELS REMAIN OPEN AMIDST TENSION",
+      "scene_order": 14
+    },
+    {
+      "id": "scene-15",
+      "image_url": "images/ce2d9e9a-2623-4126-a320-652ec93404ca.jpg",
+      "ticker_headline": "EUROPEAN MARKETS RALLY ON STRONG DATA",
+      "scene_order": 15
+    },
+    {
+      "id": "scene-16",
+      "image_url": "images/f33e45e1-0b12-4b1b-8006-fa0be44bcbd8.jpg",
+      "ticker_headline": "DAX SURGES 3.7%, CAC 40 GAINS 2.9%",
+      "scene_order": 16
+    },
+    {
+      "id": "scene-17",
+      "image_url": "images/9da04ed1-906f-4f29-b25b-cc7dc6c1ecef.jpg",
+      "ticker_headline": "BETTER-THAN-EXPECTED MANUFACTURING OUTPUT",
+      "scene_order": 17
+    },
+    {
+      "id": "scene-18",
+      "image_url": "images/a4e6e6d9-1aa9-4c5f-a866-3e72a0516c7e.jpg",
+      "ticker_headline": "EUROZONE RECOVERY SIGNALED, INFLATION CONCERNS PERSIST",
+      "scene_order": 18
+    },
+    {
+      "id": "scene-19",
+      "image_url": "images/23eec902-3b2f-480d-a206-fa5dac18b016.jpg",
+      "ticker_headline": "QUANTUM COMPUTING BREAKTHROUGH ANNOUNCED",
+      "scene_order": 19
+    },
+    {
+      "id": "scene-20",
+      "image_url": "images/7ed26a18-ffab-476f-8483-39c6c5929474.jpg",
+      "ticker_headline": "MIT DEVELOPS 500-QUBIT ROOM-TEMPERATURE PROCESSOR",
+      "scene_order": 20
+    },
+    {
+      "id": "scene-21",
+      "image_url": "images/e136695d-3b15-42d6-90d0-40af5b7e75dd.jpg",
+      "ticker_headline": "GAME-CHANGING MOMENT FOR QUANTUM ADOPTION",
+      "scene_order": 21
+    },
+    {
+      "id": "scene-22",
+      "image_url": "images/28156f23-fce1-41e6-8b38-a694e940780e.jpg",
+      "ticker_headline": "WORLD CUP QUALIFIERS SEE STUNNING UPSETS",
+      "scene_order": 22
+    }
+  ]
+}

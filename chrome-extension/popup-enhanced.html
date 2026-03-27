@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Whisk Token Manager</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 450px;
+      max-height: 600px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f0f;
+      color: #ffffff;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+      padding: 16px 20px;
+      border-bottom: 2px solid #00ff88;
+    }
+
+    .header h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #000;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .header .subtitle {
+      font-size: 11px;
+      color: #00000088;
+      margin-top: 4px;
+    }
+
+    .content {
+      padding: 16px;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+
+    /* Status Card */
+    .status-card {
+      background: #1a1a1a;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+      border: 1px solid #333;
+    }
+
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-indicator.active {
+      background: #00ff88;
+      box-shadow: 0 0 12px #00ff8888;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .status-indicator.inactive {
+      background: #ff4444;
+    }
+
+    .status-indicator.warning {
+      background: #ffaa00;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.6; }
+    }
+
+    .status-text {
+      flex: 1;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .status-time {
+      font-size: 11px;
+      color: #888;
+    }
+
+    /* Token Display */
+    .token-section {
+      margin-bottom: 12px;
+    }
+
+    .section-header {
+      font-size: 11px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .token-display {
+      background: #0a0a0a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px;
+      font-family: 'Courier New', monospace;
+      font-size: 10px;
+      color: #00ff88;
+      word-break: break-all;
+      line-height: 1.4;
+      max-height: 120px;
+      overflow-y: auto;
+      position: relative;
+    }
+
+    .token-display.masked {
+      filter: blur(4px);
+      user-select: none;
+    }
+
+    .copy-btn {
+      background: #252525;
+      border: 1px solid #333;
+      color: #00ff88;
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .copy-btn:hover {
+      background: #2f2f2f;
+      border-color: #00ff88;
+    }
+
+    .copy-btn.copied {
+      background: #00ff88;
+      color: #000;
+      border-color: #00ff88;
+    }
+
+    /* Connection Status */
+    .connection-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .connection-item {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 10px;
+    }
+
+    .connection-label {
+      font-size: 10px;
+      color: #888;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 6px;
+    }
+
+    .connection-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #00ff88;
+    }
+
+    .connection-value.error {
+      color: #ff4444;
+    }
+
+    .connection-value.warning {
+      color: #ffaa00;
+    }
+
+    /* Error Log */
+    .error-log {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+
+    .error-log-empty {
+      color: #666;
+      font-size: 12px;
+      text-align: center;
+      padding: 12px;
+    }
+
+    .error-item {
+      padding: 8px;
+      border-bottom: 1px solid #252525;
+      font-size: 11px;
+    }
+
+    .error-item:last-child {
+      border-bottom: none;
+    }
+
+    .error-time {
+      color: #888;
+      font-size: 10px;
+      margin-bottom: 4px;
+    }
+
+    .error-message {
+      color: #ff4444;
+      line-height: 1.4;
+    }
+
+    /* Buttons */
+    .btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .btn {
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #00ff88 0%, #00cc6a 100%);
+      color: #000;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px #00ff8844;
+    }
+
+    .btn-secondary {
+      background: #252525;
+      color: #fff;
+      border: 1px solid #333;
+    }
+
+    .btn-secondary:hover {
+      background: #2f2f2f;
+      border-color: #00ff88;
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    /* Footer */
+    .footer {
+      padding: 12px 16px;
+      border-top: 1px solid #333;
+      font-size: 10px;
+      color: #666;
+      text-align: center;
+    }
+
+    .footer a {
+      color: #00ff88;
+      text-decoration: none;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #0a0a0a;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #444;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>
+      <span>🔑</span>
+      <span>Whisk Token Manager</span>
+    </h1>
+    <div class="subtitle">Production-Ready OAuth Automation</div>
+  </div>
+
+  <div class="content">
+    <!-- Status -->
+    <div class="status-card">
+      <div class="status-row">
+        <div class="status-indicator" id="indicator"></div>
+        <div class="status-text" id="status-text">Initializing...</div>
+        <div class="status-time" id="status-time">-</div>
+      </div>
+    </div>
+
+    <!-- Token Display -->
+    <div class="token-section">
+      <div class="section-header">
+        <span>OAuth Token</span>
+        <div>
+          <button class="copy-btn" id="copy-btn">Copy</button>
+          <button class="copy-btn" id="toggle-mask" style="margin-left: 4px;">Show/Hide</button>
+        </div>
+      </div>
+      <div class="token-display masked" id="token-display">No token captured yet</div>
+    </div>
+
+    <!-- Connection Status -->
+    <div class="connection-grid">
+      <div class="connection-item">
+        <div class="connection-label">Backend</div>
+        <div class="connection-value" id="backend-status">●</div>
+      </div>
+      <div class="connection-item">
+        <div class="connection-label">Auto-Refresh</div>
+        <div class="connection-value" id="refresh-status">●</div>
+      </div>
+    </div>
+
+    <!-- Error Log -->
+    <div class="token-section">
+      <div class="section-header">
+        <span>Error Log</span>
+        <button class="copy-btn" id="clear-errors">Clear</button>
+      </div>
+      <div class="error-log" id="error-log">
+        <div class="error-log-empty">No errors logged</div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="btn-group">
+      <button class="btn btn-primary" id="refresh-btn">
+        🔄 Refresh Now
+      </button>
+      <button class="btn btn-secondary" id="test-backend">
+        🔗 Test Backend
+      </button>
+    </div>
+
+    <button class="btn btn-secondary" id="open-dashboard" style="width: 100%; margin-bottom: 12px;">
+      📊 Open Dashboard
+    </button>
+  </div>
+
+  <div class="footer">
+    <div id="version-info">v1.0.0 • Production Ready</div>
+    <div style="margin-top: 4px;">
+      <a href="http://localhost:8347" target="_blank">Dashboard</a> •
+      <a href="#" id="show-logs">View Logs</a>
+    </div>
+  </div>
+
+  <script src="popup-enhanced.js"></script>
+</body>
+</html>

@@ -4,6 +4,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
+import { tickerAnimationConfig } from '../animations/config';
 
 export interface NewsTickerOverlayProps {
   headlines: string[];
@@ -23,26 +24,32 @@ export const NewsTickerOverlay: React.FC<NewsTickerOverlayProps> = ({
   accentColor = '#E63946', // Red accent
 }) => {
   const frame = useCurrentFrame();
-  const { width } = useVideoConfig();
+  const { width, fps } = useVideoConfig();
 
   // Combine headlines into single string with separator
   const tickerText = headlines.join('  •  ').toUpperCase();
 
-  // Calculate scroll position
+  // Calculate variable speed based on combined headline length
+  const baseSpeed = speed || tickerAnimationConfig.baseSpeed;
+  const longHeadlineSpeed = tickerAnimationConfig.longHeadlineSpeed;
+  const threshold = tickerAnimationConfig.longHeadlineThreshold;
+
+  // Use slower speed for long headlines to improve readability
+  const scrollSpeed = tickerText.length > threshold ? longHeadlineSpeed : baseSpeed;
+
+  // Calculate scroll position for seamless loop
   const charWidth = 14; // Pixels per character (approximate)
   const textWidth = tickerText.length * charWidth;
-  const totalScrollDistance = width + textWidth;
-  const scrollSpeed = speed;
 
-  // Position cycles for seamless loop
-  const rawPosition = width - (frame * scrollSpeed);
-  const scrollX = rawPosition % totalScrollDistance;
+  // Continuous scroll from right to left
+  const scrollX = width - (frame * scrollSpeed);
 
   return (
     <AbsoluteFill
       style={{
+        bottom: 0,
         top: 'auto',
-        height: '80px',
+        height: '70px',
         display: 'flex',
         flexDirection: 'row',
         backgroundColor: 'transparent',
@@ -55,46 +62,33 @@ export const NewsTickerOverlay: React.FC<NewsTickerOverlayProps> = ({
           flex: 1,
           display: 'flex',
           alignItems: 'center',
-          backgroundColor: 'rgba(20, 20, 20, 0.95)', // Semi-transparent dark background
-          backdropFilter: 'blur(10px)',
+          backgroundColor: 'rgba(10, 10, 10, 0.98)',
           position: 'relative',
           overflow: 'hidden',
+          borderTop: `3px solid ${accentColor}`,
         }}
       >
-        {/* Red accent bar on left */}
-        <div
-          style={{
-            width: '6px',
-            height: '100%',
-            backgroundColor: accentColor,
-            position: 'absolute',
-            left: 0,
-            top: 0,
-          }}
-        />
-
         {/* Channel branding box */}
         <div
           style={{
-            marginLeft: '16px',
-            paddingLeft: '20px',
-            paddingRight: '20px',
-            height: '50px',
+            paddingLeft: '24px',
+            paddingRight: '24px',
+            height: '100%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             backgroundColor: accentColor,
-            borderRadius: '4px',
-            boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4)',
+            position: 'relative',
+            zIndex: 2,
           }}
         >
           <span
             style={{
               fontFamily: 'Inter, Arial, sans-serif',
-              fontSize: '16px',
+              fontSize: '18px',
               fontWeight: 900,
               color: '#FFFFFF',
-              letterSpacing: '0.05em',
+              letterSpacing: '0.08em',
               textTransform: 'uppercase',
             }}
           >
@@ -102,67 +96,48 @@ export const NewsTickerOverlay: React.FC<NewsTickerOverlayProps> = ({
           </span>
         </div>
 
-        {/* Scrolling ticker text */}
+        {/* Scrolling ticker text container */}
         <div
           style={{
-            marginLeft: '20px',
             flex: 1,
             height: '100%',
             display: 'flex',
             alignItems: 'center',
             overflow: 'hidden',
             position: 'relative',
+            paddingLeft: '24px',
           }}
         >
-          {/* First copy */}
+          {/* Continuously scrolling text */}
           <div
             style={{
               position: 'absolute',
               left: 0,
-              transform: `translateX(${scrollX}px)`,
-              fontSize: '18px',
-              fontFamily: 'Inter, Arial, sans-serif',
-              fontWeight: 700,
-              color: '#FFFFFF',
-              whiteSpace: 'nowrap',
-              textShadow: '1px 1px 3px rgba(0, 0, 0, 0.8)',
-              letterSpacing: '0.02em',
+              display: 'flex',
+              alignItems: 'center',
+              height: '100%',
             }}
           >
-            {tickerText}
-          </div>
-
-          {/* Second copy for seamless loop */}
-          <div
-            style={{
-              position: 'absolute',
-              left: 0,
-              transform: `translateX(${scrollX + textWidth + width}px)`,
-              fontSize: '18px',
-              fontFamily: 'Inter, Arial, sans-serif',
-              fontWeight: 700,
-              color: '#FFFFFF',
-              whiteSpace: 'nowrap',
-              textShadow: '1px 1px 3px rgba(0, 0, 0, 0.8)',
-              letterSpacing: '0.02em',
-            }}
-          >
-            {tickerText}
+            {/* Render multiple copies for seamless loop */}
+            {[0, 1, 2].map((index) => (
+              <div
+                key={index}
+                style={{
+                  transform: `translateX(${scrollX + index * (textWidth + 100)}px)`,
+                  fontSize: '20px',
+                  fontFamily: 'Inter, Arial, sans-serif',
+                  fontWeight: 700,
+                  color: '#FFFFFF',
+                  whiteSpace: 'nowrap',
+                  letterSpacing: '0.03em',
+                  paddingRight: '100px',
+                }}
+              >
+                {tickerText}
+              </div>
+            ))}
           </div>
         </div>
-
-        {/* Gradient fade on right edge */}
-        <div
-          style={{
-            position: 'absolute',
-            right: 0,
-            top: 0,
-            width: '100px',
-            height: '100%',
-            background: 'linear-gradient(to right, transparent, rgba(20, 20, 20, 0.95))',
-            pointerEvents: 'none',
-          }}
-        />
       </div>
     </AbsoluteFill>
   );

@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { spawn } from 'child_process';
+import { existsSync } from 'fs';
+import { join } from 'path';
+import os from 'os';
 
 /**
  * POST /api/jobs/[id]/launch-browser
@@ -73,11 +76,55 @@ export async function POST(
 
     try {
       if (process.platform === 'win32') {
-        // Windows: Use cmd /c start
-        spawn('cmd', ['/c', 'start', browserType, heygenUrl], {
-          detached: true,
-          stdio: 'ignore'
-        }).unref();
+        // Windows: Launch Chrome/Edge directly with proper download flags
+        // Find the browser executable
+        let browserPath: string | null = null;
+
+        if (browserType === 'chrome') {
+          const chromePaths = [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+            join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+          ];
+          browserPath = chromePaths.find(p => existsSync(p)) || null;
+        } else if (browserType === 'edge') {
+          const edgePaths = [
+            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+          ];
+          browserPath = edgePaths.find(p => existsSync(p)) || null;
+        } else if (browserType === 'chromium') {
+          // Chromium might be in various locations
+          browserPath = 'chromium'; // Fallback to PATH
+        }
+
+        // Get user's Downloads folder
+        const downloadsPath = join(os.homedir(), 'Downloads');
+
+        // Use PowerShell Start-Process (tested and working)
+        // Launches Chrome with user's default profile (Google login + extensions + downloads)
+        console.log(`🔧 [API] Launching ${browserType} with user profile...`);
+        console.log(`🔧 [API] Opening: ${heygenUrl}`);
+
+        if (browserPath && existsSync(browserPath)) {
+          // Launch Chrome directly with PowerShell (preserves user profile)
+          const psCommand = `Start-Process -FilePath '${browserPath}' -ArgumentList '--new-window','${heygenUrl}'`;
+          spawn('powershell', ['-Command', psCommand], {
+            detached: true,
+            stdio: 'ignore',
+            shell: false
+          }).unref();
+
+          console.log(`✅ [API] Browser launched with user profile`);
+        } else {
+          // Fallback: use default browser
+          console.warn(`⚠️ [API] Chrome executable not found, using default browser`);
+          spawn('cmd', ['/c', 'start', '""', `"${heygenUrl}"`], {
+            detached: true,
+            stdio: 'ignore',
+            shell: true
+          }).unref();
+        }
       } else if (process.platform === 'darwin') {
         // macOS: Use open -a
         const browserMap: Record<AllowedBrowser, string> = {

@@ -1,0 +1,16 @@
+{
+  "mcpServers": {
+    "pexels": {
+      "command": "node",
+      "args": [
+        "C:\\Users\\konra\\OneDrive\\Projekte\\20260319 Political content automation\\obsidian-news-desk\\src\\mcp\\pexels-server.ts"
+      ],
+      "env": {
+        "PEXELS_API_KEY": "fe1prqc2zR7oLTMmx0XSuFTwkIENIiPB4QjxhXvTlkNB1uzuqekDrvcD",
+        "PEXELS_CACHE_TTL": "3600000",
+        "PEXELS_DEBUG": "false",
+        "PEXELS_OUTPUT_DIR": "C:\\Users\\konra\\ObsidianNewsDesk\\footage"
+      }
+    }
+  }
+}

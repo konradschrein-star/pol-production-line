@@ -26,12 +26,16 @@ export async function GET() {
         ANTHROPIC_API_KEY: '',
         GOOGLE_AI_API_KEY: '',
         GROQ_API_KEY: '',
+        WHISK_API_TOKEN: '',
         DATABASE_URL: process.env.DATABASE_URL || '',
         REDIS_HOST: process.env.REDIS_HOST || 'localhost',
         REDIS_PORT: process.env.REDIS_PORT || '6379',
         REDIS_PASSWORD: '',
         DEFAULT_BROWSER: process.env.DEFAULT_BROWSER || 'edge',
         AUTO_WHISK_EXTENSION_ID: process.env.AUTO_WHISK_EXTENSION_ID || 'gedfnhdibkfgacmkbjgpfjihacalnlpn',
+        AVATAR_MODE: process.env.AVATAR_MODE || 'manual',
+        HEYGEN_PROFILE_PATH: process.env.HEYGEN_PROFILE_PATH || './integrations/heygen-automation/heygen-chrome-profile',
+        PYTHON_EXECUTABLE: process.env.PYTHON_EXECUTABLE || 'python',
         REMOTION_TIMEOUT_MS: process.env.REMOTION_TIMEOUT_MS || '300000',
         REMOTION_CONCURRENCY: process.env.REMOTION_CONCURRENCY || '2',
       });
@@ -58,12 +62,16 @@ export async function GET() {
       ANTHROPIC_API_KEY: settings.ANTHROPIC_API_KEY ? maskApiKey(settings.ANTHROPIC_API_KEY) : '',
       GOOGLE_AI_API_KEY: settings.GOOGLE_AI_API_KEY ? maskApiKey(settings.GOOGLE_AI_API_KEY) : '',
       GROQ_API_KEY: settings.GROQ_API_KEY ? maskApiKey(settings.GROQ_API_KEY) : '',
+      WHISK_API_TOKEN: settings.WHISK_API_TOKEN ? maskApiKey(settings.WHISK_API_TOKEN) : '',
       DATABASE_URL: settings.DATABASE_URL || '',
       REDIS_HOST: settings.REDIS_HOST || 'localhost',
       REDIS_PORT: settings.REDIS_PORT || '6379',
       REDIS_PASSWORD: settings.REDIS_PASSWORD ? '••••••••' : '',
       DEFAULT_BROWSER: settings.DEFAULT_BROWSER || 'edge',
       AUTO_WHISK_EXTENSION_ID: settings.AUTO_WHISK_EXTENSION_ID || 'gedfnhdibkfgacmkbjgpfjihacalnlpn',
+      AVATAR_MODE: settings.AVATAR_MODE || 'manual',
+      HEYGEN_PROFILE_PATH: settings.HEYGEN_PROFILE_PATH || './integrations/heygen-automation/heygen-chrome-profile',
+      PYTHON_EXECUTABLE: settings.PYTHON_EXECUTABLE || 'python',
       REMOTION_TIMEOUT_MS: settings.REMOTION_TIMEOUT_MS || '300000',
       REMOTION_CONCURRENCY: settings.REMOTION_CONCURRENCY || '2',
     });
@@ -89,6 +97,18 @@ function maskApiKey(key: string): string {
  */
 export async function POST(req: NextRequest) {
   try {
+    // Verify admin authentication
+    const authHeader = req.headers.get('authorization');
+    const expectedAuth = `Bearer ${process.env.ADMIN_API_KEY}`;
+
+    if (!authHeader || authHeader !== expectedAuth) {
+      console.warn('⚠️ [SETTINGS] Unauthorized settings update attempt');
+      return NextResponse.json(
+        { error: 'Unauthorized - Admin API key required' },
+        { status: 401 }
+      );
+    }
+
     const settings = await req.json();
     const envPath = join(process.cwd(), '.env');
 

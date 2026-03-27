@@ -1,40 +1,43 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { useJob } from '@/lib/hooks/useJob';
 import { usePolling } from '@/lib/hooks/usePolling';
 import { useHotkeys } from '@/lib/hooks/useHotkeys';
+import { useToast } from '@/lib/hooks/useToast';
 import { fetchJob } from '@/lib/utils/api';
 import { isTerminalStatus } from '@/lib/utils/status';
 import { JobStatusPanel } from '@/components/broadcast/JobStatusPanel';
 import { SceneCard } from '@/components/broadcast/SceneCard';
 import { AvatarUploadZone } from '@/components/broadcast/AvatarUploadZone';
+import { BatchImageUpload } from '@/components/broadcast/BatchImageUpload';
 import { HotkeyHelp } from '@/components/shared/HotkeyHelp';
 import { Card } from '@/components/ui/Card';
 import { Icon } from '@/components/ui/Icon';
 import { Button } from '@/components/ui/Button';
+import { ToastContainer } from '@/components/common/ToastContainer';
+import { ConsoleLog } from '@/components/broadcast/ConsoleLog';
+import { RenderingProgress } from '@/components/broadcast/RenderingProgress';
 
 export default function StoryboardEditorPage() {
   const params = useParams();
   const jobId = params.id as string;
 
   const { job, scenes, loading, error, refetch } = useJob(jobId);
+  const { toasts, showError, showSuccess, removeToast } = useToast();
   const [selectedSceneIndex, setSelectedSceneIndex] = useState<number>(0);
   const sceneRefs = useRef<{ [key: string]: HTMLDivElement | null }>({});
   const [queuePaused, setQueuePaused] = useState(false);
   const [resumingQueue, setResumingQueue] = useState(false);
+  const [showBatchUpload, setShowBatchUpload] = useState(false);
+  const [approvingJob, setApprovingJob] = useState(false);
 
-  // Poll every 3 seconds until job reaches terminal status
-  usePolling(
-    () => fetchJob(jobId),
-    3000,
-    (data) => {
-      // Continue polling if not in terminal status
-      return !isTerminalStatus(data.job.status);
-    },
-    !!job && !isTerminalStatus(job.status)
-  );
+  // Manual refresh only - no auto-polling to avoid scroll issues
+  // User can refresh via button or Ctrl+R
+  const handleManualRefresh = useCallback(async () => {
+    await refetch();
+  }, [refetch]);
 
   // Detect if queue is paused (scenes stuck in generating for > 5 minutes)
   useEffect(() => {
@@ -56,8 +59,8 @@ export default function StoryboardEditorPage() {
     setQueuePaused(stuckScenes.length > 0);
   }, [job, scenes]);
 
-  // Handler to resume queue
-  const handleResumeQueue = async () => {
+  // Handler to resume queue (wrapped in useCallback to prevent unnecessary re-renders)
+  const handleResumeQueue = useCallback(async () => {
     setResumingQueue(true);
     try {
       const response = await fetch('/api/queue/resume', { method: 'POST' });
@@ -67,15 +70,48 @@ export default function StoryboardEditorPage() {
         setQueuePaused(false);
         setTimeout(() => refetch(), 2000); // Refresh after 2 seconds
       } else {
-        alert('Failed to resume queue. Check worker logs.');
+        showError('Failed to resume queue. Check worker logs.');
       }
     } catch (error) {
       console.error('Failed to resume queue:', error);
-      alert('Failed to resume queue. Check that workers are running.');
+      showError('Failed to resume queue. Check that workers are running.');
     } finally {
       setResumingQueue(false);
     }
-  };
+  }, [refetch, showError]);
+
+  // Handler to approve and start rendering
+  const handleApproveAndRender = useCallback(async () => {
+    setApprovingJob(true);
+    try {
+      console.log(`🎬 [UI] Approving job ${jobId}...`);
+
+      const response = await fetch(`/api/jobs/${jobId}/compile`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to start rendering');
+      }
+
+      const result = await response.json();
+      console.log(`✅ [UI] Job approved:`, result);
+
+      showSuccess('🎉 Rendering started! Video will be ready in ~2-3 minutes.');
+
+      // Refresh to show updated status
+      setTimeout(() => {
+        refetch();
+      }, 500);
+    } catch (error) {
+      console.error('❌ [UI] Approve failed:', error);
+      showError(error instanceof Error ? error.message : 'Failed to start rendering');
+    } finally {
+      setApprovingJob(false);
+    }
+  }, [jobId, refetch, showError, showSuccess]);
 
   // Scroll to selected scene
   useEffect(() => {
@@ -254,8 +290,82 @@ export default function StoryboardEditorPage() {
 
   return (
     <div>
-      {/* Status Panel */}
-      <JobStatusPanel job={job} />
+      {/* Status Panel with Manual Refresh Button */}
+      <div className="mb-6">
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-on-surface">
+            Job {job.id.substring(0, 8)}
+          </h1>
+          <button
+            onClick={handleManualRefresh}
+            className="flex items-center gap-2 px-4 py-2 bg-surface-container-high hover:bg-surface-container-highest text-on-surface rounded-lg transition-colors"
+            title="Refresh job data"
+          >
+            <Icon name="refresh" size="sm" />
+            <span className="text-sm font-medium">Refresh</span>
+          </button>
+        </div>
+        <JobStatusPanel
+          job={{
+            ...job,
+            total_scenes: scenes.length,
+            completed_scenes: scenes.filter(s => s.image_url).length,
+          }}
+        />
+      </div>
+
+      {/* Rendering Progress Panel - Show for rendering/completed/failed jobs */}
+      {job.render_logs && job.render_logs.length > 0 && (
+        <RenderingProgress logs={job.render_logs} status={job.status} />
+      )}
+
+      {/* Top Approve Button (Sticky) - Only shown in review_assets state */}
+      {job.status === 'review_assets' && job.avatar_mp4_url && (
+        <div className="sticky top-0 z-50 bg-surface/95 backdrop-blur-sm border-b border-outline-variant/30 py-4 px-6 mb-6">
+          <div className="max-w-7xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-3 text-sm">
+              {approvingJob ? (
+                <Icon name="autorenew" size="md" className="text-blue-400 animate-spin" />
+              ) : (
+                <Icon name="check_circle" size="md" className="text-green-400" />
+              )}
+              <div>
+                <div className="text-white font-semibold">
+                  {approvingJob ? 'Starting render...' : 'Ready to approve'}
+                </div>
+                <div className="text-on-surface-variant text-xs">
+                  {approvingJob
+                    ? 'Queueing job for rendering...'
+                    : 'All images generated and avatar uploaded'}
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-xs text-on-surface-variant">
+                <kbd className="px-2 py-1 bg-surface-container-high rounded text-white font-mono">Ctrl+Enter</kbd> or <kbd className="px-2 py-1 bg-surface-container-high rounded text-white font-mono">Cmd+Enter</kbd>
+              </div>
+              <Button
+                variant="primary"
+                onClick={handleApproveAndRender}
+                disabled={approvingJob}
+                className="text-lg py-4 px-8 font-bold"
+              >
+                {approvingJob ? (
+                  <>
+                    <Icon name="autorenew" size="md" className="animate-spin" />
+                    STARTING...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="play_arrow" size="md" />
+                    APPROVE & START RENDERING
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-10 mt-8">
         {/* Avatar Script (if available) */}
@@ -337,6 +447,35 @@ export default function StoryboardEditorPage() {
           </div>
         )}
 
+        {/* Batch Upload Section */}
+        {showScenes && (
+          <div className="mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold text-white">
+                Batch Upload
+              </h2>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowBatchUpload(!showBatchUpload)}
+              >
+                <Icon name={showBatchUpload ? 'expand_less' : 'expand_more'} size="sm" />
+                {showBatchUpload ? 'Hide' : 'Show'}
+              </Button>
+            </div>
+            {showBatchUpload && (
+              <BatchImageUpload
+                jobId={jobId}
+                scenes={scenes}
+                onComplete={() => {
+                  refetch();
+                  setShowBatchUpload(false);
+                }}
+              />
+            )}
+          </div>
+        )}
+
         {/* Scenes Grid */}
         {showScenes && (
           <div>
@@ -377,6 +516,7 @@ export default function StoryboardEditorPage() {
           <AvatarUploadZone
             jobId={jobId}
             avatarUrl={job.avatar_mp4_url}
+            jobStatus={job.status}
             onUploadComplete={refetch}
           />
         )}
@@ -410,7 +550,12 @@ export default function StoryboardEditorPage() {
                   Export Guide
                 </a>
               </div>
-              <a href={`/api/files?path=${encodeURIComponent(job.final_video_url)}`} download>
+              <a
+                href={`/api/files?path=${encodeURIComponent(job.final_video_url)}&filename=${encodeURIComponent(
+                  `${new Date(job.completed_at || job.created_at).toISOString().split('T')[0]}_${job.id.substring(0, 8)}.mp4`
+                )}`}
+                download
+              >
                 <Button variant="primary" className="w-full">
                   <Icon name="download" size="md" />
                   Download Final Video
@@ -423,6 +568,9 @@ export default function StoryboardEditorPage() {
 
       {/* Hotkey Help Modal */}
       <HotkeyHelp hotkeys={hotkeys} />
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
     </div>
   );
 }

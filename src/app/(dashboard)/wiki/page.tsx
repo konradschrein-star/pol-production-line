@@ -134,6 +134,42 @@ export default function WikiPage() {
           </div>
         </Card>
 
+        {/* Progress Tracking */}
+        <Card variant="default">
+          <div className="p-6">
+            <h2 className="text-xl font-bold text-primary mb-4">Progress Tracking</h2>
+            <div className="space-y-4 text-sm">
+              <div>
+                <p className="font-bold text-primary mb-2">Job Progress Bars</p>
+                <ul className="list-disc list-inside space-y-1 text-xs text-on-surface-variant ml-4">
+                  <li>Real-time progress percentage for active jobs (analyzing, generating_images, rendering)</li>
+                  <li>Stage-based weights: analyzing=10%, generating_images=40%, review_assets=70%, rendering=90%</li>
+                  <li>Dynamic scene progress within generating_images stage</li>
+                  <li>Progress bars shown on job detail pages and broadcasts list</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-bold text-primary mb-2">Time Estimates</p>
+                <ul className="list-disc list-inside space-y-1 text-xs text-on-surface-variant ml-4">
+                  <li>Time remaining calculated from historical averages (analyzing: 45s, images: 20min, rendering: 2.5min)</li>
+                  <li>Real-time adjustment based on actual scene completion timing</li>
+                  <li>Estimated completion time shown on job pages</li>
+                  <li>Time left column in broadcasts table shows remaining time for active jobs</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-bold text-primary mb-2">Overall Progress Bar</p>
+                <ul className="list-disc list-inside space-y-1 text-xs text-on-surface-variant ml-4">
+                  <li>Combined progress across all active jobs shown at top of broadcasts page</li>
+                  <li>Displays: active job count, completed count, failed count</li>
+                  <li>Total time remaining aggregated from all active jobs</li>
+                  <li>Only visible when at least one job is actively processing</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </Card>
+
         {/* Managing Jobs */}
         <Card variant="default">
           <div className="p-6">
@@ -153,7 +189,16 @@ export default function WikiPage() {
                   <li>Select jobs via checkboxes (shift+click for range)</li>
                   <li><strong>Delete:</strong> Hard delete with cascade to scenes, queue cleanup</li>
                   <li><strong>Cancel:</strong> Sets status to cancelled, removes from queues</li>
-                  <li>Confirmation modals prevent accidents</li>
+                  <li>Confirmation modals prevent accidents for bulk operations</li>
+                </ul>
+              </div>
+              <div>
+                <p className="font-bold text-primary mb-2">Quick Delete (Two-Press)</p>
+                <ul className="list-disc list-inside space-y-1 text-xs text-on-surface-variant ml-4">
+                  <li><strong>First Delete press:</strong> Marks job with red border (pending deletion)</li>
+                  <li><strong>Second Delete press:</strong> Immediately deletes without modal confirmation</li>
+                  <li>Navigation (↑↓ j/k) clears pending deletion state</li>
+                  <li>Faster workflow for single job deletion vs bulk modal</li>
                 </ul>
               </div>
               <div>
@@ -183,9 +228,9 @@ export default function WikiPage() {
         <Card variant="default">
           <div className="p-6">
             <h2 className="text-xl font-bold text-primary mb-4">Keyboard Shortcuts</h2>
-            <div className="grid grid-cols-2 gap-4 text-sm">
+            <div className="grid grid-cols-3 gap-4 text-sm">
               <div>
-                <p className="font-bold text-primary mb-2">Navigation</p>
+                <p className="font-bold text-primary mb-2">Broadcasts List</p>
                 <div className="space-y-1 text-xs text-on-surface-variant font-mono">
                   <div className="grid grid-cols-[80px,1fr] gap-2">
                     <span className="text-outline">j / ↓</span>
@@ -200,8 +245,53 @@ export default function WikiPage() {
                     <span>Open selected</span>
                   </div>
                   <div className="grid grid-cols-[80px,1fr] gap-2">
+                    <span className="text-outline">x</span>
+                    <span>Toggle selection</span>
+                  </div>
+                  <div className="grid grid-cols-[80px,1fr] gap-2">
+                    <span className="text-outline">d</span>
+                    <span>Download selected</span>
+                  </div>
+                  <div className="grid grid-cols-[80px,1fr] gap-2">
+                    <span className="text-red-400">Del Del</span>
+                    <span>Delete (2×)</span>
+                  </div>
+                  <div className="grid grid-cols-[80px,1fr] gap-2">
                     <span className="text-outline">n</span>
                     <span>New broadcast</span>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <p className="font-bold text-primary mb-2">Storyboard Editor</p>
+                <div className="space-y-1 text-xs text-on-surface-variant font-mono">
+                  <div className="grid grid-cols-[80px,1fr] gap-2">
+                    <span className="text-outline">←/→</span>
+                    <span>Navigate scenes</span>
+                  </div>
+                  <div className="grid grid-cols-[80px,1fr] gap-2">
+                    <span className="text-outline">j/k</span>
+                    <span>Navigate scenes</span>
+                  </div>
+                  <div className="grid grid-cols-[80px,1fr] gap-2">
+                    <span className="text-outline">1-9</span>
+                    <span>Jump to scene</span>
+                  </div>
+                  <div className="grid grid-cols-[80px,1fr] gap-2">
+                    <span className="text-outline">r</span>
+                    <span>Regenerate scene</span>
+                  </div>
+                  <div className="grid grid-cols-[80px,1fr] gap-2">
+                    <span className="text-outline">u</span>
+                    <span>Upload image</span>
+                  </div>
+                  <div className="grid grid-cols-[80px,1fr] gap-2">
+                    <span className="text-outline">e</span>
+                    <span>Edit headline</span>
+                  </div>
+                  <div className="grid grid-cols-[80px,1fr] gap-2">
+                    <span className="text-yellow-400">Ctrl+Enter</span>
+                    <span className="text-yellow-400">Approve & render</span>
                   </div>
                 </div>
               </div>
@@ -218,6 +308,11 @@ export default function WikiPage() {
                   </div>
                 </div>
               </div>
+            </div>
+            <div className="mt-4 pt-4 border-t border-outline-variant/30">
+              <p className="text-xs text-on-surface-variant">
+                <span className="font-bold text-primary">Tip:</span> Press <kbd className="px-2 py-1 bg-surface-container-high rounded text-white font-mono">?</kbd> on any page to see context-specific shortcuts.
+              </p>
             </div>
           </div>
         </Card>

@@ -13,9 +13,17 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const raw_script = formData.get('raw_script') as string;
     const provider = formData.get('provider') as string || 'openai';
+    const style_preset_id = formData.get('style_preset_id') as string | null;
+    const skip_review = formData.get('skip_review') === 'true';
     const avatarFile = formData.get('avatar') as File | null;
 
     console.log(`🤖 [API] Selected AI provider: ${provider}`);
+    if (style_preset_id) {
+      console.log(`📐 [API] Using style preset: ${style_preset_id}`);
+    }
+    if (skip_review) {
+      console.log(`⏭️  [API] Skip human review enabled - will auto-approve when images complete`);
+    }
 
     // Validate input
     if (!raw_script || typeof raw_script !== 'string') {
@@ -66,12 +74,12 @@ export async function POST(request: NextRequest) {
       console.log(`✅ [API] Avatar saved to: ${avatarPath}`);
     }
 
-    // Create job in database with avatar path
+    // Create job in database with avatar path and style preset
     const result = await db.query(
-      `INSERT INTO news_jobs (raw_script, avatar_script, avatar_mp4_url, status)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO news_jobs (raw_script, avatar_script, avatar_mp4_url, status, style_preset_id)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id, status, created_at`,
-      [raw_script, raw_script, avatarPath, 'pending']
+      [raw_script, raw_script, avatarPath, 'pending', style_preset_id || null]
     );
 
     const job = result.rows[0];

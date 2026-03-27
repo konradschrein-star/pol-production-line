@@ -23,10 +23,16 @@ export interface PacingResult {
   bodyScenes: number;
 }
 
+export interface SceneSentenceInfo {
+  sceneOrder: number;
+  sentenceText: string;
+}
+
 export interface TranscriptPacingInput {
   avatarDurationSeconds: number;
   wordTimestamps: WordTimestamp[];
   sceneCount: number;
+  sceneSentences?: SceneSentenceInfo[]; // Optional: explicit scene-to-sentence mapping from database
   fps?: number;
 }
 
@@ -219,12 +225,13 @@ export function calculateScenePacing(
 export function calculateTranscriptBasedPacing(
   input: TranscriptPacingInput
 ): PacingResult {
-  const { avatarDurationSeconds, wordTimestamps, sceneCount, fps = 30 } = input;
+  const { avatarDurationSeconds, wordTimestamps, sceneCount, sceneSentences, fps = 30 } = input;
 
   console.log(`\n📐 [Pacing] Calculating transcript-based scene timing...`);
   console.log(`   Avatar duration: ${avatarDurationSeconds}s`);
   console.log(`   Scene count: ${sceneCount}`);
   console.log(`   Word count: ${wordTimestamps.length}`);
+  console.log(`   Scene sentences provided: ${sceneSentences ? 'YES' : 'NO'}`);
   console.log(`   FPS: ${fps}`);
 
   // Fallback: No transcript data, use time-based pacing
@@ -257,6 +264,14 @@ export function calculateTranscriptBasedPacing(
 
   console.log(`   Target hook scenes: ${targetHookScenes} (${(hookSceneRatio * 100).toFixed(0)}%)`);
   console.log(`   Target body scenes: ${targetBodyScenes}`);
+
+  // CRITICAL FIX: Detect sentence detection failure (common with HeyGen word timestamps)
+  // If we have very few sentences detected (< 25% of target body scenes), use even distribution
+  if (bodySentences.length > 0 && bodySentences.length < targetBodyScenes * 0.25) {
+    console.warn(`⚠️  [Pacing] Sentence detection failed! Only ${bodySentences.length} sentences for ${targetBodyScenes} scenes`);
+    console.warn(`   This usually means word timestamps lack punctuation (HeyGen issue)`);
+    console.warn(`   Using fallback: even time distribution for body scenes`);
+  }
 
   const sceneTiming: SceneTiming[] = [];
 
@@ -332,7 +347,30 @@ export function calculateTranscriptBasedPacing(
 
   // ===== BODY PHASE: 1 image per 1-2 sentences =====
   // CRITICAL GUARD: Prevent division by zero if no sentences or no target scenes
-  if (bodySentences.length > 0 && targetBodyScenes > 0) {
+  const useFallbackDistribution = bodySentences.length < targetBodyScenes * 0.25;
+
+  if (useFallbackDistribution && bodyWords.length > 0 && targetBodyScenes > 0) {
+    // FALLBACK: Even time distribution when sentence detection fails
+    console.log(`   Body pacing: FALLBACK - even time distribution (${targetBodyScenes} scenes)`);
+
+    const bodyStartTime = hookEndTime;
+    const bodyEndTime = avatarDurationSeconds;
+    const bodyDuration = bodyEndTime - bodyStartTime;
+    const sceneIntervalSeconds = bodyDuration / targetBodyScenes;
+
+    for (let i = 0; i < targetBodyScenes; i++) {
+      const sceneStart = bodyStartTime + (i * sceneIntervalSeconds);
+      const sceneDuration = sceneIntervalSeconds;
+
+      sceneTiming.push({
+        sceneId: `scene_${targetHookScenes + i}`,
+        startFrame: Math.round(sceneStart * fps),
+        durationInFrames: Math.round(sceneDuration * fps),
+        durationInSeconds: sceneDuration,
+      });
+    }
+  } else if (bodySentences.length > 0 && targetBodyScenes > 0) {
+    // NORMAL PATH: Use sentence detection
     const sentencesPerScene = bodySentences.length / targetBodyScenes;
 
     console.log(`   Body pacing: ${sentencesPerScene.toFixed(2)} sentences per scene`);
@@ -390,33 +428,50 @@ export function calculateTranscriptBasedPacing(
 
   // ===== CRITICAL FIX: Ensure continuous coverage with NO gaps =====
   // Recalculate to eliminate black frames between scenes
+
+  // CRITICAL VALIDATION: Check if we have the correct number of scene timings
+  if (sceneTiming.length !== sceneCount) {
+    console.error(`⚠️ [Pacing] SCENE COUNT MISMATCH!`);
+    console.error(`   Expected: ${sceneCount} scenes`);
+    console.error(`   Generated: ${sceneTiming.length} scene timings`);
+    console.error(`   Hook scenes generated: ${sceneTiming.filter(s => s.sceneId.startsWith('scene_') && parseInt(s.sceneId.split('_')[1]) < targetHookScenes).length}`);
+    console.error(`   Body scenes generated: ${sceneTiming.filter(s => s.sceneId.startsWith('scene_') && parseInt(s.sceneId.split('_')[1]) >= targetHookScenes).length}`);
+    console.error(`   This will cause scene/timing mismatch - filling missing scenes with equal distribution`);
+  }
+
   const continuousSceneTiming: SceneTiming[] = [];
   const totalFrames = Math.round(avatarDurationSeconds * fps);
   let currentFrame = 0;
 
-  for (let i = 0; i < Math.min(sceneTiming.length, sceneCount); i++) {
+  console.log(`\n🔧 [Pacing] CRITICAL FIX: Creating ${sceneCount} continuous timings`);
+  console.log(`   Total frames available: ${totalFrames}`);
+
+  // FIXED: Always create exactly sceneCount timings, not min(sceneTiming.length, sceneCount)
+  for (let i = 0; i < sceneCount; i++) {
     // Calculate duration for this scene, ensuring we fill the entire video
     const remainingFrames = totalFrames - currentFrame;
     const remainingScenes = sceneCount - i;
 
-    // CRITICAL GUARD: Prevent division by zero if no remaining scenes
-    if (remainingScenes <= 0) {
-      console.error(`⚠️ [Pacing] Unexpected state: remainingScenes=${remainingScenes} at index ${i}`);
-      break;
-    }
-
     // Distribute remaining frames evenly across remaining scenes
-    const durationInFrames = Math.round(remainingFrames / remainingScenes);
+    const durationInFrames = remainingScenes > 0 && remainingFrames > 0
+      ? Math.round(remainingFrames / remainingScenes)
+      : 1; // Fallback to 1 frame if we run out
 
-    continuousSceneTiming.push({
+    const timing = {
       sceneId: `scene_${i}`,
       startFrame: currentFrame,
-      durationInFrames: durationInFrames,
-      durationInSeconds: durationInFrames / fps,
-    });
+      durationInFrames: Math.max(1, durationInFrames), // Ensure at least 1 frame
+      durationInSeconds: Math.max(1, durationInFrames) / fps,
+    };
 
-    currentFrame += durationInFrames;
+    continuousSceneTiming.push(timing);
+
+    console.log(`   Scene ${i}: Frame ${currentFrame} - ${currentFrame + timing.durationInFrames - 1} (${timing.durationInFrames} frames = ${(timing.durationInFrames / fps).toFixed(2)}s)`);
+
+    currentFrame += timing.durationInFrames;
   }
+
+  console.log(`\n✅ [Pacing] Loop completed: Created ${continuousSceneTiming.length} timings`);
 
   // Adjust last scene to fill exactly to the end (handle rounding)
   if (continuousSceneTiming.length > 0) {
@@ -428,6 +483,12 @@ export function calculateTranscriptBasedPacing(
   console.log(`✅ [Pacing] Calculated ${continuousSceneTiming.length} scenes (continuous coverage)`);
   console.log(`   Total duration: ${avatarDurationSeconds}s (${totalFrames} frames)`);
   console.log(`   Coverage: Frame 0 to ${totalFrames} (NO GAPS)`);
+
+  // FINAL VALIDATION
+  if (continuousSceneTiming.length !== sceneCount) {
+    console.error(`❌ [Pacing] CRITICAL ERROR: Failed to create correct number of scene timings!`);
+    console.error(`   Expected: ${sceneCount}, Got: ${continuousSceneTiming.length}`);
+  }
 
   return {
     totalDurationInFrames: totalFrames,

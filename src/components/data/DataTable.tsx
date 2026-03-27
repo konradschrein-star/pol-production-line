@@ -24,6 +24,7 @@ interface DataTableProps<T> {
   sortable?: boolean;
   currentSort?: { column: string; order: 'asc' | 'desc' };
   onSort?: (column: string, order: 'asc' | 'desc') => void;
+  pendingDeleteId?: string | null; // ID of row pending deletion (two-press delete)
 }
 
 export function DataTable<T extends Record<string, any>>({
@@ -39,6 +40,7 @@ export function DataTable<T extends Record<string, any>>({
   sortable = false,
   currentSort,
   onSort,
+  pendingDeleteId = null,
 }: DataTableProps<T>) {
   const handleSelectAll = (checked: boolean) => {
     if (!onSelectionChange) return;
@@ -78,7 +80,7 @@ export function DataTable<T extends Record<string, any>>({
 
   return (
     <div className="overflow-x-auto">
-      <table className="w-full">
+      <table className="w-full" role="table" aria-label="Data table">
         <thead className="sticky top-0 bg-surface-container border-b-2 border-outline">
           <tr>
             {selectable && (
@@ -91,6 +93,7 @@ export function DataTable<T extends Record<string, any>>({
                   }}
                   onChange={(e) => handleSelectAll(e.target.checked)}
                   className="rounded border-outline-variant"
+                  aria-label={allSelected ? "Deselect all rows" : "Select all rows"}
                 />
               </th>
             )}
@@ -130,13 +133,15 @@ export function DataTable<T extends Record<string, any>>({
               const itemId = getItemId(item);
               const isSelected = selectedIds.has(itemId);
               const isHighlighted = selectedIndex === index;
+              const isPendingDelete = pendingDeleteId === itemId;
 
               return (
                 <tr
                   key={itemId}
                   className={`
                     transition-colors cursor-pointer
-                    ${isSelected ? 'bg-surface-bright' :
+                    ${isPendingDelete ? 'bg-red-900/20 border-l-4 border-red-500' :
+                      isSelected ? 'bg-surface-bright' :
                       isHighlighted ? 'bg-surface-container-high' :
                       'hover:bg-surface-container'}
                   `}

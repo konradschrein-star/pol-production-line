@@ -127,9 +127,22 @@ export class GoogleProvider implements AIProvider {
         const jsonText = jsonMatch ? jsonMatch[1] : text;
 
         const parsed = JSON.parse(jsonText.trim());
+
+        // ✅ VALIDATE PROMPT COUNT BEFORE ACCEPTING
+        const expectedCount = scene.subSentences ? scene.subSentences.length : scene.sentences.length;
+        const actualCount = parsed.sentence_prompts?.length || 0;
+
+        if (actualCount !== expectedCount) {
+          throw new Error(
+            `AI returned ${actualCount} prompts but expected ${expectedCount} for scene ${scene.id} ` +
+            `(${scene.isHook ? 'hook' : 'body'}). This scene has ${expectedCount} sentences/sub-sentences ` +
+            `that need visualization. AI must generate exactly one prompt per sentence.`
+          );
+        }
+
         scenePrompts.push(parsed);
 
-        console.log(`   ✅ Scene ${scene.id}: ${parsed.sentence_prompts?.length || 0} prompts generated`);
+        console.log(`   ✅ Scene ${scene.id}: ${actualCount}/${expectedCount} prompts generated (validated)`);
       } catch (error: unknown) {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         console.error(`   ❌ Scene ${scene.id} failed:`, errorMessage);

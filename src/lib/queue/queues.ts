@@ -16,10 +16,16 @@ export const queueRender = new Queue('queue_render', {
   connection: redisOptions,
 });
 
+// Queue for automated avatar generation (HeyGen Python automation)
+export const queueAvatarAutomation = new Queue('queue_avatar_automation', {
+  connection: redisOptions,
+});
+
 console.log('✅ BullMQ queues initialized');
 
 export default {
   queueAnalyze,
   queueImages,
   queueRender,
+  queueAvatarAutomation,
 };

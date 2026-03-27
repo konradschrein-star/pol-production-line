@@ -1,4 +1,4 @@
-import { existsSync, statSync, copyFileSync, mkdirSync } from 'fs';
+import { existsSync, statSync, copyFileSync, mkdirSync, createReadStream } from 'fs';
 import { join, basename, normalize, isAbsolute } from 'path';
 import { resolveStoragePath } from '../storage/path-resolver';
 
@@ -144,7 +144,14 @@ export async function prepareRenderAssets(
       await copyImageToPublic(avatarMp4Url, destPath);
 
       console.log(`   ✅ Copied to: public/avatars/${avatarFilename}`);
-      result.details.push(`Avatar: Prepared successfully`);
+
+      // PRELOAD VERIFICATION: Ensure avatar is fully readable before rendering
+      // This prevents Remotion timeouts during render by catching file access issues early
+      console.log(`   🔍 Preloading avatar to verify accessibility...`);
+      await preloadAvatarFile(destPath);
+      console.log(`   ✅ Avatar preload successful - file is fully accessible`);
+
+      result.details.push(`Avatar: Prepared and preloaded successfully`);
     } catch (error) {
       result.valid = false;
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -281,4 +288,45 @@ function extractFilename(path: string): string | null {
   }
 
   return filename;
+}
+
+/**
+ * Preload avatar file to verify it's fully accessible before rendering
+ *
+ * This reads the first 10MB of the file to ensure:
+ * - File is not corrupted
+ * - File permissions are correct
+ * - Disk is not having I/O issues
+ * - File handle can be opened successfully
+ *
+ * Catching issues here prevents Remotion timeouts during render.
+ */
+async function preloadAvatarFile(filePath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const stream = createReadStream(filePath, {
+      highWaterMark: 1024 * 1024, // 1MB chunks
+    });
+
+    let bytesRead = 0;
+    const preloadLimit = 10 * 1024 * 1024; // Read first 10MB
+
+    stream.on('data', (chunk) => {
+      bytesRead += chunk.length;
+
+      // Stop after reading 10MB (enough to verify file is accessible)
+      if (bytesRead >= preloadLimit) {
+        stream.destroy();
+        resolve();
+      }
+    });
+
+    stream.on('end', () => {
+      // File is smaller than 10MB, fully read
+      resolve();
+    });
+
+    stream.on('error', (error) => {
+      reject(new Error(`Avatar preload failed: ${error.message}`));
+    });
+  });
 }

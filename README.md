@@ -72,7 +72,48 @@ An automated news video production system with AI-driven script analysis, automa
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Installation
+
+### For End Users (Recommended)
+
+**Want to start creating videos quickly?** Use the all-in-one installer:
+
+1. **Download Installer:**
+   - Go to [GitHub Releases](https://github.com/konradschrein-star/pol-production-line/releases/latest)
+   - Download `ObsidianNewsDesk-Setup.exe` (~150-200 MB)
+
+2. **Prerequisites:**
+   - **Docker Desktop** (required) - https://www.docker.com/products/docker-desktop/
+   - **Google Chrome** (required for Whisk extension)
+   - **Windows 10/11 x64** (macOS/Linux support coming in v2.0)
+   - **10GB free disk space**
+   - **8GB RAM** (recommended)
+
+3. **Run Installer:**
+   - Double-click `ObsidianNewsDesk-Setup.exe`
+   - Follow the 6-page setup wizard
+   - Complete the 5-page interactive tutorial on first launch
+   - Start creating videos!
+
+4. **First Video:**
+   - See [QUICKSTART.md](QUICKSTART.md) for a 5-minute guide
+   - Or [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md) for detailed step-by-step with screenshots
+
+**What you get:**
+- ✅ Single-file installer with all dependencies bundled
+- ✅ Setup wizard (no manual config files)
+- ✅ Background services (no terminal windows)
+- ✅ System tray integration
+- ✅ Auto-update support
+- ✅ Interactive tutorial on first launch
+
+---
+
+### For Developers
+
+**Want to contribute or run from source?** Manual setup for development:
+
+## 🚀 Quick Start (Development)
 
 ### Prerequisites
 

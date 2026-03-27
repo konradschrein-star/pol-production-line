@@ -7,8 +7,13 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
+import { StylePresetManager } from '@/components/settings/StylePresetManager';
+import { StylePresetCreator } from '@/components/settings/StylePresetCreator';
 
 export default function SettingsPage() {
+  // Active tab state
+  const [activeTab, setActiveTab] = useState<'general' | 'styles'>('general');
+
   // AI Provider Settings
   const [aiProvider, setAiProvider] = useState('google');
   const [anthropicKey, setAnthropicKey] = useState('');
@@ -39,6 +44,12 @@ export default function SettingsPage() {
   // Whisk Settings
   const [whiskToken, setWhiskToken] = useState('');
   const [whiskModel, setWhiskModel] = useState('IMAGEN_3_5');
+
+  // Token Refresh State
+  const [isRefreshingToken, setIsRefreshingToken] = useState(false);
+  const [tokenRefreshSuccess, setTokenRefreshSuccess] = useState(false);
+  const [tokenRefreshError, setTokenRefreshError] = useState<string | null>(null);
+  const [lastTokenRefresh, setLastTokenRefresh] = useState<number | null>(null);
 
   // UI State
   const [loading, setLoading] = useState(true);
@@ -106,6 +117,37 @@ export default function SettingsPage() {
       console.error('Failed to load settings:', error);
       setError(errorMessage);
       setLoading(false);
+    }
+  };
+
+  const handleRefreshToken = async () => {
+    setIsRefreshingToken(true);
+    setTokenRefreshError(null);
+    setTokenRefreshSuccess(false);
+
+    try {
+      const response = await fetch('/api/whisk/refresh-token', {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setTokenRefreshSuccess(true);
+        setLastTokenRefresh(data.timestamp);
+
+        // Auto-hide success message after 5 seconds
+        setTimeout(() => setTokenRefreshSuccess(false), 5000);
+
+        // Reload settings to show updated token
+        await loadSettings();
+      } else {
+        setTokenRefreshError(data.error || 'Token refresh failed');
+      }
+    } catch (err) {
+      setTokenRefreshError(err instanceof Error ? err.message : 'Network error');
+    } finally {
+      setIsRefreshingToken(false);
     }
   };
 
@@ -190,10 +232,36 @@ export default function SettingsPage() {
     <div>
       <PageHeader
         title="SETTINGS"
-        subtitle="Configure .env Variables"
+        subtitle="Configure system preferences and visual styles"
       />
 
-      <div className="max-w-3xl space-y-6">
+      {/* Tab Navigation */}
+      <div className="flex gap-2 mb-8 border-b border-outline-variant/30">
+        <button
+          onClick={() => setActiveTab('general')}
+          className={`px-6 py-3 text-sm font-bold transition-colors border-b-2 uppercase tracking-wider ${
+            activeTab === 'general'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          General
+        </button>
+        <button
+          onClick={() => setActiveTab('styles')}
+          className={`px-6 py-3 text-sm font-bold transition-colors border-b-2 uppercase tracking-wider ${
+            activeTab === 'styles'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          Visual Styles
+        </button>
+      </div>
+
+      {/* General Settings Tab */}
+      {activeTab === 'general' && (
+        <div className="max-w-3xl space-y-6">
         {/* AI Provider Section */}
         <Card variant="default">
           <div className="border-b border-outline-variant px-6 py-4">
@@ -591,6 +659,93 @@ export default function SettingsPage() {
           </div>
         </Card>
 
+        {/* Token Management */}
+        <Card variant="default">
+          <div className="border-b border-outline-variant px-6 py-4">
+            <h2 className="text-lg font-bold text-white uppercase tracking-wider">
+              🔑 TOKEN MANAGEMENT
+            </h2>
+            <p className="text-sm text-on-surface-variant mt-1">
+              Whisk API tokens expire every hour. The system automatically refreshes
+              tokens when needed, but you can also refresh manually.
+            </p>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <div className="flex items-center gap-4">
+              <Button
+                onClick={handleRefreshToken}
+                disabled={isRefreshingToken}
+                variant="secondary"
+              >
+                {isRefreshingToken ? (
+                  <>
+                    <Icon name="autorenew" size="sm" className="animate-spin mr-2" />
+                    Refreshing Token...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="refresh" size="sm" className="mr-2" />
+                    Refresh Token Now
+                  </>
+                )}
+              </Button>
+
+              {lastTokenRefresh && (
+                <span className="text-sm text-on-surface-variant">
+                  Last refreshed: {new Date(lastTokenRefresh).toLocaleString()}
+                </span>
+              )}
+            </div>
+
+            {tokenRefreshError && (
+              <div className="p-4 bg-error/10 border-l-4 border-error rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Icon name="error" size="sm" className="text-error flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-bold text-error mb-1">Token Refresh Failed</h4>
+                    <p className="text-sm text-error/90">{tokenRefreshError}</p>
+                    <p className="text-xs text-error/70 mt-2">
+                      Try signing in to Google in your Chrome browser, then retry.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {tokenRefreshSuccess && (
+              <div className="p-4 bg-green-500/10 border-l-4 border-green-500 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <Icon name="check_circle" size="sm" className="text-green-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="font-bold text-green-400 mb-1">Token Refreshed Successfully</h4>
+                    <p className="text-sm text-green-300">
+                      Your Whisk API token has been updated and will expire in ~60 minutes.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="bg-blue-900/20 border-l-4 border-blue-500 p-4 rounded-lg">
+              <h4 className="font-bold text-blue-400 mb-2">🤖 Automatic Refresh</h4>
+              <p className="text-xs text-blue-200 mb-2">
+                The system automatically refreshes expired tokens using your Chrome profile:
+              </p>
+              <ul className="text-xs text-blue-200 space-y-1 ml-4 mb-3">
+                <li>• Detects 401 errors during image generation</li>
+                <li>• Launches Chrome in headless mode (invisible)</li>
+                <li>• Navigates to Whisk and captures fresh token</li>
+                <li>• Updates .env file automatically</li>
+                <li>• Retries failed image generation</li>
+              </ul>
+              <p className="text-xs text-blue-200">
+                <strong>Requirements:</strong> Must be signed in to Google in Chrome (one-time setup)
+              </p>
+            </div>
+          </div>
+        </Card>
+
         {/* Remotion Rendering */}
         <Card variant="default">
           <div className="border-b border-outline-variant px-6 py-4">
@@ -682,7 +837,16 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-      </div>
+        </div>
+      )}
+
+      {/* Visual Styles Tab */}
+      {activeTab === 'styles' && (
+        <div className="max-w-6xl space-y-8">
+          <StylePresetManager />
+          <StylePresetCreator />
+        </div>
+      )}
     </div>
   );
 }

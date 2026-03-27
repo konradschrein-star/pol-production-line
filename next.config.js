@@ -1,11 +1,10 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // TypeScript and ESLint checks temporarily disabled for installer build
   typescript: {
-    // Temporarily ignore TypeScript errors during build for E2E testing
     ignoreBuildErrors: true,
   },
   eslint: {
-    // Temporarily ignore ESLint errors during build
     ignoreDuringBuilds: true,
   },
   images: {

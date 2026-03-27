@@ -1,10 +1,12 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 /**
  * usePolling Hook
  * Polls a function at a given interval until a condition is met
+ *
+ * Uses stable refs to prevent polling restart on function changes
  */
 export function usePolling<T>(
   fetchFn: () => Promise<T>,
@@ -12,6 +14,19 @@ export function usePolling<T>(
   shouldContinue: (data: T) => boolean,
   enabled = true
 ) {
+  // Stable references using useRef to prevent effect restart
+  const fetchFnRef = useRef(fetchFn);
+  const shouldContinueRef = useRef(shouldContinue);
+
+  // Update refs when functions change (doesn't restart effect)
+  useEffect(() => {
+    fetchFnRef.current = fetchFn;
+  }, [fetchFn]);
+
+  useEffect(() => {
+    shouldContinueRef.current = shouldContinue;
+  }, [shouldContinue]);
+
   useEffect(() => {
     if (!enabled) return;
 
@@ -22,11 +37,11 @@ export function usePolling<T>(
       if (!isMounted) return;
 
       try {
-        const result = await fetchFn();
+        const result = await fetchFnRef.current();
 
         if (!isMounted) return;
 
-        if (!shouldContinue(result)) {
+        if (!shouldContinueRef.current(result)) {
           clearInterval(intervalId);
         }
       } catch (error) {
@@ -44,5 +59,5 @@ export function usePolling<T>(
       isMounted = false;
       clearInterval(intervalId);
     };
-  }, [fetchFn, interval, shouldContinue, enabled]);
+  }, [interval, enabled]); // Only depend on primitives
 }

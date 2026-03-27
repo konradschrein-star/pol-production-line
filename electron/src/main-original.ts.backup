@@ -1,0 +1,238 @@
+import { app, BrowserWindow, ipcMain, dialog } from 'electron';
+import * as path from 'path';
+import * as dockerCheck from './docker/check';
+import * as dockerLifecycle from './docker/lifecycle';
+import * as configStorage from './config/storage';
+import * as envGenerator from './config/env-generator';
+import * as validator from './config/validator';
+import * as workerSpawner from './workers/spawner';
+
+let mainWindow: BrowserWindow | null = null;
+let wizardWindow: BrowserWindow | null = null;
+
+// Check if this is first run using electron-store
+const isFirstRun = configStorage.isFirstRun();
+
+function createWizardWindow() {
+  wizardWindow = new BrowserWindow({
+    width: 800,
+    height: 700,
+    backgroundColor: '#1a1a1a',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+    title: 'Obsidian News Desk - Setup Wizard',
+    autoHideMenuBar: true,
+    resizable: false,
+    center: true,
+  });
+
+  // Load the wizard HTML
+  const wizardPath = path.join(__dirname, '..', 'src', 'installer', 'pages', 'wizard.html');
+  wizardWindow.loadFile(wizardPath);
+
+  // Open DevTools in development
+  if (process.env.NODE_ENV === 'development') {
+    wizardWindow.webContents.openDevTools();
+  }
+
+  wizardWindow.on('closed', () => {
+    wizardWindow = null;
+    // Launch main app after wizard closes
+    if (!isFirstRun) {
+      createMainWindow();
+    }
+  });
+}
+
+function createMainWindow() {
+  mainWindow = new BrowserWindow({
+    width: 1600,
+    height: 900,
+    backgroundColor: '#1a1a1a',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+    title: 'Obsidian News Desk',
+    autoHideMenuBar: true,
+  });
+
+  // Load the Next.js dev server
+  mainWindow.loadURL('http://localhost:8347');
+
+  // Open DevTools in development
+  if (process.env.NODE_ENV === 'development') {
+    mainWindow.webContents.openDevTools();
+  }
+
+  mainWindow.on('closed', () => {
+    mainWindow = null;
+  });
+}
+
+// Helper function to send progress messages to wizard window
+function sendProgress(message: string) {
+  if (wizardWindow) {
+    wizardWindow.webContents.send('progress', message);
+  }
+}
+
+// IPC Handlers for Docker operations
+ipcMain.handle('docker:getStatus', async () => {
+  return await dockerCheck.getDockerStatus();
+});
+
+ipcMain.handle('docker:install', async () => {
+  await dockerCheck.installDockerDesktop(sendProgress);
+});
+
+ipcMain.handle('docker:start', async () => {
+  await dockerCheck.startDockerDesktop();
+});
+
+ipcMain.handle('docker:pullImages', async () => {
+  const appDir = app.getAppPath();
+  await dockerLifecycle.pullDockerImages(appDir, sendProgress);
+});
+
+ipcMain.handle('docker:startCompose', async () => {
+  const appDir = app.getAppPath();
+  await dockerLifecycle.startDockerCompose(appDir, sendProgress);
+});
+
+ipcMain.handle('docker:stopCompose', async () => {
+  const appDir = app.getAppPath();
+  await dockerLifecycle.stopDockerCompose(appDir, sendProgress);
+});
+
+ipcMain.handle('docker:waitForServices', async () => {
+  await dockerLifecycle.waitForAllServices(sendProgress);
+});
+
+ipcMain.handle('docker:getContainerStatus', async () => {
+  return await dockerLifecycle.getContainerStatus();
+});
+
+ipcMain.handle('ping', async () => {
+  return 'pong';
+});
+
+// Configuration operations
+ipcMain.handle('config:validateAPIKey', async (_event, provider, apiKey) => {
+  return await validator.validateAPIKey(provider, apiKey);
+});
+
+ipcMain.handle('config:validateStoragePath', async (_event, storagePath) => {
+  return await envGenerator.validateStoragePath(storagePath);
+});
+
+ipcMain.handle('config:getDiskSpace', async (_event, storagePath) => {
+  return await envGenerator.getDiskSpace(storagePath);
+});
+
+ipcMain.handle('config:selectDirectory', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory', 'createDirectory'],
+    title: 'Select Storage Directory',
+  });
+
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+
+  return result.filePaths[0];
+});
+
+ipcMain.handle('config:createStorageDirectories', async (_event, storagePath) => {
+  await envGenerator.createStorageDirectories(storagePath);
+  sendProgress(`Created storage directories at ${storagePath}`);
+});
+
+ipcMain.handle('config:generateEnv', async (_event, config) => {
+  const appDir = app.getAppPath();
+  await envGenerator.writeEnvFile(appDir, config);
+  sendProgress('Generated .env configuration file');
+});
+
+ipcMain.handle('config:save', async (_event, config) => {
+  configStorage.updateConfig(config);
+  configStorage.setFirstRunComplete();
+  sendProgress('Saved configuration');
+
+  // After saving config, close wizard and open main window
+  if (wizardWindow) {
+    setTimeout(() => {
+      wizardWindow?.close();
+      createMainWindow();
+    }, 500);
+  }
+});
+
+ipcMain.handle('config:get', async () => {
+  return configStorage.getConfig();
+});
+
+// Worker operations
+ipcMain.handle('workers:start', async () => {
+  const appDir = app.getAppPath();
+  const config = configStorage.getConfig();
+
+  // Build environment variables from config
+  const envVars: Record<string, string> = {
+    NODE_ENV: 'production',
+    DATABASE_URL: 'postgresql://obsidian:obsidian_password@localhost:5432/obsidian_news',
+    REDIS_HOST: 'localhost',
+    REDIS_PORT: '6379',
+    REDIS_PASSWORD: 'obsidian_redis_password',
+    AI_PROVIDER: config.aiProvider,
+  };
+
+  // Add API keys based on provider
+  if (config.openaiKey) envVars.OPENAI_API_KEY = config.openaiKey;
+  if (config.claudeKey) envVars.ANTHROPIC_API_KEY = config.claudeKey;
+  if (config.googleKey) envVars.GOOGLE_AI_API_KEY = config.googleKey;
+  if (config.groqKey) envVars.GROQ_API_KEY = config.groqKey;
+  if (config.whiskToken) envVars.WHISK_API_TOKEN = config.whiskToken;
+
+  workerSpawner.spawnWorkers(appDir, envVars, sendProgress);
+  sendProgress('BullMQ workers started');
+});
+
+ipcMain.handle('workers:stop', async () => {
+  workerSpawner.killWorkers();
+  sendProgress('BullMQ workers stopped');
+});
+
+ipcMain.handle('workers:getStatus', async () => {
+  return workerSpawner.getWorkerStatus();
+});
+
+app.whenReady().then(() => {
+  // Show wizard on first run, otherwise show main window
+  if (isFirstRun) {
+    createWizardWindow();
+  } else {
+    createMainWindow();
+  }
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      if (isFirstRun) {
+        createWizardWindow();
+      } else {
+        createMainWindow();
+      }
+    }
+  });
+});
+
+app.on('window-all-closed', () => {
+  // On macOS, apps typically stay active until Cmd+Q
+  if (process.platform !== 'darwin') {
+    app.quit();
+  }
+});

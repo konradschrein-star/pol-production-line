@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
+import { MetricCard } from '@/components/analytics/MetricCard';
+import { PerformanceBreakdown } from '@/components/analytics/PerformanceBreakdown';
 
 interface AnalyticsData {
   totalJobs: number;
@@ -11,6 +13,18 @@ interface AnalyticsData {
   pendingJobs: number;
   successRate: number;
   avgProcessingTime: string;
+  performanceBreakdown?: {
+    analysis: string;
+    imageGeneration: string;
+    rendering: string;
+    total: string;
+  } | null;
+  imageGenerationStats?: {
+    totalAttempts: number;
+    successfulAttempts: number;
+    avgGenerationTime: string;
+    successRate: string;
+  };
   jobsByStatus: {
     status: string;
     count: number;
@@ -73,70 +87,84 @@ export default function AnalyticsPage() {
         subtitle="Production Performance Metrics"
       />
 
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Key Metrics */}
+      <div className="max-w-7xl mx-auto space-y-6">
+        {/* Key Metrics Row 1 */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-          <Card variant="default">
-            <div className="px-6 py-6 space-y-2">
-              <div className="text-sm font-bold text-outline-variant uppercase tracking-wider">
-                Total Jobs
-              </div>
-              <div className="text-4xl font-bold text-white">
-                {analytics.totalJobs}
-              </div>
-            </div>
-          </Card>
-
-          <Card variant="default">
-            <div className="px-6 py-6 space-y-2">
-              <div className="text-sm font-bold text-outline-variant uppercase tracking-wider">
-                Success Rate
-              </div>
-              <div className="text-4xl font-bold text-white">
-                {analytics.successRate}%
-              </div>
-            </div>
-          </Card>
-
-          <Card variant="default">
-            <div className="px-6 py-6 space-y-2">
-              <div className="text-sm font-bold text-outline-variant uppercase tracking-wider">
-                Completed
-              </div>
-              <div className="text-4xl font-bold text-green-400">
-                {analytics.completedJobs}
-              </div>
-            </div>
-          </Card>
-
-          <Card variant="default">
-            <div className="px-6 py-6 space-y-2">
-              <div className="text-sm font-bold text-outline-variant uppercase tracking-wider">
-                Failed
-              </div>
-              <div className="text-4xl font-bold text-red-400">
-                {analytics.failedJobs}
-              </div>
-            </div>
-          </Card>
+          <MetricCard
+            label="Total Jobs"
+            value={analytics.totalJobs}
+            icon="work"
+            variant="default"
+          />
+          <MetricCard
+            label="Success Rate"
+            value={analytics.successRate}
+            suffix="%"
+            icon="check_circle"
+            variant={analytics.successRate >= 90 ? 'success' : analytics.successRate >= 70 ? 'warning' : 'error'}
+          />
+          <MetricCard
+            label="Completed"
+            value={analytics.completedJobs}
+            icon="done_all"
+            variant="success"
+          />
+          <MetricCard
+            label="Failed"
+            value={analytics.failedJobs}
+            icon="error"
+            variant={analytics.failedJobs > 0 ? 'error' : 'default'}
+          />
         </div>
 
-        {/* Processing Time */}
-        <Card variant="default">
-          <div className="border-b border-outline-variant/20 px-6 py-4">
-            <h2 className="text-lg font-bold text-white uppercase tracking-wider">
-              ⏱️ Average Processing Time
-            </h2>
+        {/* Key Metrics Row 2 - Image Generation Stats */}
+        {analytics.imageGenerationStats && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <MetricCard
+              label="Image Success Rate"
+              value={analytics.imageGenerationStats.successRate}
+              suffix="%"
+              icon="image"
+              variant="default"
+              size="sm"
+            />
+            <MetricCard
+              label="Total Attempts"
+              value={analytics.imageGenerationStats.totalAttempts}
+              icon="refresh"
+              variant="default"
+              size="sm"
+            />
+            <MetricCard
+              label="Avg Generation Time"
+              value={analytics.imageGenerationStats.avgGenerationTime}
+              icon="schedule"
+              variant="default"
+              size="sm"
+            />
           </div>
-          <div className="px-6 py-8 text-center">
-            <div className="text-5xl font-bold text-primary">
-              {analytics.avgProcessingTime}
+        )}
+
+        {/* Performance Breakdown */}
+        {analytics.performanceBreakdown ? (
+          <PerformanceBreakdown
+            analysis={analytics.performanceBreakdown.analysis}
+            imageGeneration={analytics.performanceBreakdown.imageGeneration}
+            rendering={analytics.performanceBreakdown.rendering}
+            total={analytics.performanceBreakdown.total}
+          />
+        ) : (
+          <Card variant="default">
+            <div className="border-b border-outline-variant/20 px-6 py-4">
+              <h2 className="text-lg font-bold text-white uppercase tracking-wider">
+                ⚡ Performance Breakdown
+              </h2>
             </div>
-            <div className="text-sm text-on-surface-variant mt-2">
-              For completed jobs (from submission to final render)
+            <div className="px-6 py-12 text-center text-on-surface-variant">
+              Complete at least one job to see performance metrics
             </div>
-          </div>
-        </Card>
+          </Card>
+        )}
 
         {/* Jobs by Status */}
         <Card variant="default">

@@ -1,0 +1,19 @@
+-- Migration: Add reference_strategy column to style_presets
+-- Date: 2026-03-25
+-- Description: Adds reference_strategy column for Whisk API reference image configuration
+
+ALTER TABLE style_presets
+ADD COLUMN IF NOT EXISTS reference_strategy VARCHAR(50) DEFAULT 'style_only';
+
+-- Add check constraint for valid values
+ALTER TABLE style_presets
+ADD CONSTRAINT valid_reference_strategy CHECK (
+    reference_strategy IN ('style_only', 'style_and_subject', 'style_subject_scene', 'none')
+);
+
+-- Verification
+DO $$
+BEGIN
+    RAISE NOTICE 'Migration 003_add_reference_strategy.sql completed successfully';
+    RAISE NOTICE 'Added column: reference_strategy (default: style_only)';
+END $$;

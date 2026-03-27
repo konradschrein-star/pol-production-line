@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { saveBuffer } from '@/lib/storage/local';
+import { validateImage, processImage } from '@/lib/utils/image-processing';
 
 /**
  * POST /api/jobs/[id]/scenes/[scene_id]/upload
  * Manually upload an image to override auto-generated one
+ * Now with Sharp validation and processing
  */
 export async function POST(
   request: NextRequest,
@@ -39,7 +41,7 @@ export async function POST(
       );
     }
 
-    // Validate file type
+    // Validate file type (basic check before processing)
     const validTypes = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp'];
     if (!validTypes.includes(file.type)) {
       return NextResponse.json(
@@ -51,28 +53,44 @@ export async function POST(
       );
     }
 
-    // Validate file size (max 10MB)
-    const maxSize = 10 * 1024 * 1024; // 10MB
-    if (file.size > maxSize) {
-      return NextResponse.json(
-        {
-          error: 'File too large. Maximum size: 10MB',
-          receivedSize: `${(file.size / 1024 / 1024).toFixed(2)}MB`,
-        },
-        { status: 400 }
-      );
-    }
-
-    console.log(`📦 [API] Saving file: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+    console.log(`📦 [API] Processing file: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
 
     // Convert File to Buffer
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    // Save to local storage
-    const extension = file.type.split('/')[1] || 'png';
-    const filename = `${scene_id}.${extension}`;
-    const localPath = await saveBuffer(buffer, 'images', filename);
+    // Validate image with Sharp
+    const validation = await validateImage(buffer);
+
+    if (!validation.valid) {
+      console.error(`❌ [API] Image validation failed:`, validation.errors);
+      return NextResponse.json(
+        {
+          error: 'Image validation failed',
+          details: validation.errors.join(', '),
+          validation,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Log warnings if any
+    if (validation.warnings.length > 0) {
+      console.warn(`⚠️ [API] Image warnings:`, validation.warnings);
+    }
+
+    // Process image: resize to 1920x1080, optimize, convert to JPEG
+    const processedBuffer = await processImage(buffer, {
+      resize: true,
+      optimize: true,
+      targetWidth: 1920,
+      targetHeight: 1080,
+      quality: 90,
+    });
+
+    // Save processed image to local storage (always as .jpg)
+    const filename = `${scene_id}.jpg`;
+    const localPath = await saveBuffer(processedBuffer, filename, 'images');
 
     // Update scene in database with LOCAL PATH
     await db.query(
@@ -80,15 +98,22 @@ export async function POST(
       [localPath, 'completed', scene_id]
     );
 
-    console.log(`✅ [API] Scene ${scene_id} image saved: ${localPath}`);
+    console.log(`✅ [API] Scene ${scene_id} image processed and saved: ${localPath}`);
 
     return NextResponse.json({
       success: true,
-      message: 'Image saved successfully to local storage',
+      message: 'Image processed and saved successfully',
       scene_id,
       image_url: localPath,
       file_name: file.name,
-      file_size: file.size,
+      original_size: file.size,
+      processed_size: processedBuffer.length,
+      resolution: '1920x1080',
+      validation: {
+        original_width: validation.width,
+        original_height: validation.height,
+        warnings: validation.warnings,
+      },
     });
 
   } catch (error: unknown) {

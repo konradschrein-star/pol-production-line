@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Generate Extension Icons</title>
+</head>
+<body>
+  <h1>Generating Icons...</h1>
+  <canvas id="canvas" style="display: none;"></canvas>
+  <div id="output"></div>
+
+  <script>
+    function generateIcon(size) {
+      const canvas = document.getElementById('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+
+      // Background - dark professional
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(0, 0, size, size);
+
+      // Border - accent green
+      ctx.strokeStyle = '#00ff88';
+      ctx.lineWidth = Math.max(2, size * 0.08);
+      ctx.strokeRect(ctx.lineWidth / 2, ctx.lineWidth / 2, size - ctx.lineWidth, size - ctx.lineWidth);
+
+      // Key icon
+      ctx.fillStyle = '#00ff88';
+
+      // Key circle (head)
+      const centerX = size * 0.4;
+      const centerY = size * 0.35;
+      const radius = size * 0.15;
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Key hole in circle
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Key shaft
+      ctx.fillStyle = '#00ff88';
+      ctx.fillRect(centerX + radius * 0.5, centerY - radius * 0.3, size * 0.25, radius * 0.6);
+
+      // Key teeth
+      const teethStart = centerX + radius * 0.5 + size * 0.25;
+      ctx.fillRect(teethStart, centerY - radius * 0.3, size * 0.08, radius * 0.4);
+      ctx.fillRect(teethStart + size * 0.08, centerY + radius * 0.1, size * 0.08, radius * 0.2);
+
+      // Letter "W"
+      if (size >= 48) {
+        ctx.font = `bold ${size * 0.22}px Arial`;
+        ctx.fillStyle = '#ffffff';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('W', size * 0.5, size * 0.75);
+      }
+
+      return canvas.toDataURL('image/png');
+    }
+
+    // Generate all three sizes
+    const sizes = [
+      { size: 16, filename: 'icon16.png' },
+      { size: 48, filename: 'icon48.png' },
+      { size: 128, filename: 'icon128.png' }
+    ];
+
+    sizes.forEach(({ size, filename }) => {
+      const dataUrl = generateIcon(size);
+
+      // Create download link
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = dataUrl;
+      link.textContent = `Download ${filename}`;
+      link.style.display = 'block';
+      link.style.margin = '10px';
+      link.style.fontSize = '16px';
+      document.getElementById('output').appendChild(link);
+
+      // Auto-click to download
+      setTimeout(() => link.click(), 100 * (size / 16));
+    });
+
+    document.getElementById('output').insertAdjacentHTML('afterbegin',
+      '<p style="font-family: sans-serif; color: #00ff88;">✅ Icons generated! Click links to download or they will auto-download.</p>'
+    );
+  </script>
+</body>
+</html>

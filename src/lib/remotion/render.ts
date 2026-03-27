@@ -2,7 +2,9 @@ import { bundle } from '@remotion/bundler';
 import { getCompositions, renderMedia } from '@remotion/renderer';
 import { mkdirSync, existsSync } from 'fs';
 import { join } from 'path';
-import { getVideoDuration } from './pacing';
+import { getVideoDuration } from './video-utils';
+import { WordTimestamp } from './types';
+import { getCachedBundle, cacheBundle, computeCompositionHash } from './cache';
 
 export interface RenderJobData {
   jobId: string;
@@ -13,6 +15,8 @@ export interface RenderJobData {
     ticker_headline: string;
     scene_order: number;
   }>;
+  wordTimestamps?: WordTimestamp[];
+  onProgress?: (info: { renderedFrames: number; totalFrames: number; progress: number }) => void;
 }
 
 export interface RenderResult {
@@ -28,11 +32,18 @@ export interface RenderResult {
  * @returns Path to rendered video
  */
 export async function renderNewsVideo(jobData: RenderJobData): Promise<RenderResult> {
-  const { jobId, avatarMp4Url, scenes } = jobData;
+  const { jobId, avatarMp4Url, scenes, wordTimestamps, onProgress } = jobData;
 
   console.log(`\n🎬 [Render] Starting video render for job ${jobId}...`);
   console.log(`   Avatar URL: ${avatarMp4Url}`);
   console.log(`   Scenes: ${scenes.length}`);
+  console.log(`   Transcript mode: ${wordTimestamps ? 'ENABLED' : 'DISABLED (time-based fallback)'}`);
+
+  // Log scene details for debugging
+  console.log(`\n📋 [Render] Scene details:`);
+  for (const scene of scenes) {
+    console.log(`   Scene ${scene.scene_order + 1}: ${scene.image_url}`);
+  }
 
   try {
     // 1. Get avatar duration
@@ -40,15 +51,48 @@ export async function renderNewsVideo(jobData: RenderJobData): Promise<RenderRes
     const avatarDurationSeconds = await getVideoDuration(avatarMp4Url);
     console.log(`   Duration: ${avatarDurationSeconds}s`);
 
-    // 2. Bundle Remotion composition
-    console.log(`📦 [Render] Bundling Remotion project...`);
+    // 2. Bundle Remotion composition (with caching)
+    const compositionHash = computeCompositionHash();
+    let bundleLocation = getCachedBundle(compositionHash);
 
-    const bundleLocation = await bundle({
-      entryPoint: join(__dirname, 'index.ts'),
-      webpackOverride: (config) => config,
-    });
+    if (!bundleLocation) {
+      console.log(`📦 [Render] Bundling Remotion project (no cache)...`);
 
-    console.log(`✅ [Render] Bundled to: ${bundleLocation}`);
+      bundleLocation = await bundle({
+        entryPoint: join(__dirname, 'index.ts'),
+        publicDir: join(process.cwd(), 'public'),
+        webpackOverride: (config) => {
+          // Ensure Remotion can access the public folder
+          return {
+            ...config,
+            resolve: {
+              ...config.resolve,
+              fallback: {
+                ...config.resolve?.fallback,
+                path: false, // Don't polyfill path module
+              },
+            },
+            devServer: {
+              ...config.devServer,
+              static: [
+                ...(config.devServer?.static ? (Array.isArray(config.devServer.static) ? config.devServer.static : [config.devServer.static]) : []),
+                {
+                  directory: join(process.cwd(), 'public'),
+                  publicPath: '/',
+                },
+              ],
+            },
+          };
+        },
+      });
+
+      console.log(`✅ [Render] Bundled to: ${bundleLocation}`);
+
+      // Cache the bundle for future renders
+      cacheBundle(compositionHash, bundleLocation);
+    } else {
+      console.log(`✅ [Render] Using cached bundle (hash: ${compositionHash.substring(0, 8)}...)`);
+    }
 
     // 3. Get compositions
     console.log(`🔍 [Render] Getting compositions...`);
@@ -57,10 +101,12 @@ export async function renderNewsVideo(jobData: RenderJobData): Promise<RenderRes
       avatarMp4Url,
       avatarDurationSeconds,
       scenes,
+      wordTimestamps,
     };
 
     const compositions = await getCompositions(bundleLocation, {
       inputProps,
+      timeoutInMilliseconds: 300000, // 5 min timeout for loading large videos (40+ min avatars can be 200-400MB)
     });
 
     console.log(`   Found ${compositions.length} compositions`);
@@ -89,7 +135,7 @@ export async function renderNewsVideo(jobData: RenderJobData): Promise<RenderRes
       console.log(`   Created dynamic composition: ${width}x${height} @ ${fps}fps, ${durationInFrames} frames`);
 
       // Use dynamic composition
-      await performRender(bundleLocation, dynamicComposition, jobId);
+      await performRender(bundleLocation, dynamicComposition, jobId, onProgress);
 
     } else {
       console.log(`✅ [Render] Using composition: ${composition.id}`);
@@ -97,7 +143,7 @@ export async function renderNewsVideo(jobData: RenderJobData): Promise<RenderRes
       console.log(`   Duration: ${composition.durationInFrames} frames`);
 
       // Use found composition
-      await performRender(bundleLocation, composition, jobId);
+      await performRender(bundleLocation, composition, jobId, onProgress);
     }
 
     // 4. Get output file info
@@ -129,7 +175,8 @@ export async function renderNewsVideo(jobData: RenderJobData): Promise<RenderRes
 async function performRender(
   bundleLocation: string,
   composition: any,
-  jobId: string
+  jobId: string,
+  onProgressCallback?: (info: { renderedFrames: number; totalFrames: number; progress: number }) => void
 ): Promise<void> {
   // Ensure output directory exists
   const outputDir = join(process.cwd(), 'tmp');
@@ -144,16 +191,29 @@ async function performRender(
 
   const startTime = Date.now();
 
+  const totalFrames = composition.durationInFrames;
+
   await renderMedia({
     composition,
     serveUrl: bundleLocation,
     codec: 'h264',
     outputLocation: outputPath,
     inputProps: composition.defaultProps,
-    concurrency: parseInt(process.env.REMOTION_CONCURRENCY || '2'),
-    onProgress: ({ progress }) => {
+    concurrency: parseInt(process.env.REMOTION_CONCURRENCY || '4'),
+    timeoutInMilliseconds: 300000, // 5 min timeout for loading large videos (40+ min avatars can be 200-400MB)
+    publicDir: join(process.cwd(), 'public'), // CRITICAL: Specify public directory for staticFile()
+    onProgress: ({ progress, renderedFrames }) => {
       const percent = (progress * 100).toFixed(1);
-      process.stdout.write(`\r   Progress: ${percent}%`);
+      process.stdout.write(`\r   Progress: ${percent}% (Frame ${renderedFrames}/${totalFrames})`);
+
+      // Call callback if provided
+      if (onProgressCallback) {
+        onProgressCallback({
+          renderedFrames: renderedFrames || Math.round(progress * totalFrames),
+          totalFrames,
+          progress,
+        });
+      }
     },
   });
 

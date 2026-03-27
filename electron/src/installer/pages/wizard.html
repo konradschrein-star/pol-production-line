@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Obsidian News Desk - Installation Wizard</title>
+  <link rel="stylesheet" href="../styles/wizard.css">
+</head>
+<body>
+  <div class="wizard-container">
+    <!-- Header -->
+    <div class="wizard-header">
+      <h1>Obsidian News Desk</h1>
+      <p>Automated News Video Production Pipeline</p>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="progress-container">
+      <div class="progress-bar"></div>
+    </div>
+
+    <!-- Content Area -->
+    <div class="wizard-content">
+
+      <!-- Page 1: Welcome -->
+      <div class="wizard-page active" id="page-welcome">
+        <h2>Welcome to Obsidian News Desk</h2>
+        <p>
+          This wizard will guide you through the installation process. The setup takes approximately 5-10 minutes
+          and will configure everything you need to start producing professional news videos.
+        </p>
+
+        <div class="requirements">
+          <h3 style="margin-bottom: 16px; font-size: 15px;">System Requirements</h3>
+
+          <div class="requirement-item" id="req-disk">
+            <div class="requirement-status pending">○</div>
+            <div class="requirement-label">At least 10GB free disk space</div>
+          </div>
+
+          <div class="requirement-item" id="req-memory">
+            <div class="requirement-status pending">○</div>
+            <div class="requirement-label">Minimum 8GB RAM recommended</div>
+          </div>
+
+          <div class="requirement-item" id="req-node">
+            <div class="requirement-status pending">○</div>
+            <div class="requirement-label">Node.js 18+ (bundled with installer)</div>
+          </div>
+        </div>
+
+        <p style="margin-top: 24px;">
+          <strong>What will be installed:</strong>
+        </p>
+        <ul>
+          <li>Next.js web application</li>
+          <li>Docker containers (PostgreSQL and Redis)</li>
+          <li>BullMQ job queue system</li>
+          <li>Remotion video rendering engine</li>
+        </ul>
+
+        <button id="btn-get-started" class="btn btn-primary" style="margin-top: 24px;">
+          Get Started
+        </button>
+      </div>
+
+      <!-- Page 2: Docker Check -->
+      <div class="wizard-page" id="page-docker">
+        <h2>Docker Desktop</h2>
+        <p>
+          Obsidian News Desk requires Docker Desktop to run PostgreSQL and Redis containers.
+          We'll check if Docker is installed and running.
+        </p>
+
+        <div id="docker-status" class="status-box info">
+          <span class="status-icon">ℹ</span>
+          <span class="status-text">Click "Check Docker" to begin detection.</span>
+        </div>
+
+        <button id="btn-check-docker" class="btn btn-primary">Check Docker</button>
+        <button id="btn-install-docker" class="btn btn-success" style="display: none; margin-left: 12px;">
+          Install Docker Desktop
+        </button>
+        <button id="btn-start-docker" class="btn btn-secondary" style="display: none; margin-left: 12px;">
+          Start Docker Desktop
+        </button>
+
+        <div style="margin-top: 32px; padding: 16px; background: #252525; border-radius: 8px;">
+          <p style="font-size: 13px; color: #a0a0a0; margin: 0;">
+            <strong style="color: #e0e0e0; display: block; margin-bottom: 8px;">Note:</strong>
+            If Docker Desktop is installed for the first time, Windows may require a restart.
+            The installer will resume after reboot.
+          </p>
+        </div>
+      </div>
+
+      <!-- Page 3: Storage Path -->
+      <div class="wizard-page" id="page-storage">
+        <h2>Storage Location</h2>
+        <p>
+          Choose where to store generated videos, images, and avatars. Make sure you have at least 10GB of free space.
+        </p>
+
+        <div class="form-group">
+          <label for="storage-path">Storage Directory</label>
+          <div class="path-selector">
+            <input type="text" id="storage-path" placeholder="C:\Users\YourName\ObsidianNewsDesk">
+            <button id="btn-browse" class="btn btn-outline">Browse...</button>
+          </div>
+          <div id="path-validation" class="validation-message" style="display: none;"></div>
+        </div>
+
+        <div class="directory-info">
+          <h4>The following directories will be created:</h4>
+          <ul>
+            <li><code>images/</code> - Scene background images from Whisk API</li>
+            <li><code>avatars/</code> - HeyGen avatar MP4 files (30-60 MB each)</li>
+            <li><code>videos/</code> - Final rendered broadcast videos</li>
+          </ul>
+        </div>
+      </div>
+
+      <!-- Page 4: API Configuration -->
+      <div class="wizard-page" id="page-api-config">
+        <h2>API Configuration</h2>
+        <p>
+          Configure your AI provider and API keys. These are required to analyze scripts and generate images.
+        </p>
+
+        <div class="form-group">
+          <label for="ai-provider">AI Provider</label>
+          <select id="ai-provider" class="form-control">
+            <option value="openai">OpenAI (GPT-4)</option>
+            <option value="claude">Anthropic Claude</option>
+            <option value="google">Google Gemini</option>
+            <option value="groq">Groq</option>
+          </select>
+          <small>This AI will analyze your news scripts and extract scenes.</small>
+        </div>
+
+        <div id="openai-key-group" class="form-group">
+          <label for="openai-key">OpenAI API Key</label>
+          <div class="input-with-button">
+            <input type="password" id="openai-key" placeholder="sk-...">
+            <button id="btn-validate-key" class="btn btn-secondary">Validate Key</button>
+          </div>
+          <small>
+            <a href="https://platform.openai.com/api-keys" target="_blank" style="color: #4a90e2;">Get your API key here →</a>
+          </small>
+          <div id="api-validation" class="validation-message" style="display: none;"></div>
+        </div>
+
+        <div id="claude-key-group" class="form-group" style="display: none;">
+          <label for="claude-key">Anthropic API Key</label>
+          <div class="input-with-button">
+            <input type="password" id="claude-key" placeholder="sk-ant-...">
+            <button class="btn btn-secondary" onclick="validateAPIKey()">Validate Key</button>
+          </div>
+          <small>
+            <a href="https://console.anthropic.com/settings/keys" target="_blank" style="color: #4a90e2;">Get your API key here →</a>
+          </small>
+        </div>
+
+        <div id="google-key-group" class="form-group" style="display: none;">
+          <label for="google-key">Google AI API Key</label>
+          <div class="input-with-button">
+            <input type="password" id="google-key" placeholder="AIza...">
+            <button class="btn btn-secondary" onclick="validateAPIKey()">Validate Key</button>
+          </div>
+          <small>
+            <a href="https://makersuite.google.com/app/apikey" target="_blank" style="color: #4a90e2;">Get your API key here →</a>
+          </small>
+        </div>
+
+        <div id="groq-key-group" class="form-group" style="display: none;">
+          <label for="groq-key">Groq API Key</label>
+          <div class="input-with-button">
+            <input type="password" id="groq-key" placeholder="gsk_...">
+            <button class="btn btn-secondary" onclick="validateAPIKey()">Validate Key</button>
+          </div>
+          <small>
+            <a href="https://console.groq.com/keys" target="_blank" style="color: #4a90e2;">Get your API key here →</a>
+          </small>
+        </div>
+
+        <div class="form-group" style="margin-top: 32px;">
+          <label for="whisk-token">Google Whisk API Token (Optional)</label>
+          <input type="password" id="whisk-token" placeholder="ya29.a0...">
+          <small>
+            Required for automated image generation.
+            <a href="https://labs.google.com/whisk" target="_blank" style="color: #4a90e2;">How to get token →</a>
+          </small>
+        </div>
+      </div>
+
+      <!-- Page 5: Installation Progress -->
+      <div class="wizard-page" id="page-install">
+        <h2>Installing...</h2>
+        <p>
+          Setting up Obsidian News Desk. This may take several minutes depending on your internet speed.
+        </p>
+
+        <div class="log-output" id="install-log">
+          <div class="log-line info">[Ready] Click "Start Installation" to begin.</div>
+        </div>
+
+        <button id="btn-start-install" class="btn btn-primary">Start Installation</button>
+      </div>
+
+      <!-- Page 6: Complete -->
+      <div class="wizard-page" id="page-complete">
+        <div class="success-icon">✓</div>
+        <h2 style="text-align: center;">Installation Complete!</h2>
+        <p style="text-align: center;">
+          Obsidian News Desk is ready to use. Click "Launch Application" to start creating news videos.
+        </p>
+
+        <div class="quick-start">
+          <h3>Quick Start Guide</h3>
+
+          <div class="quick-start-item">
+            <strong>Web Interface</strong>
+            <span>http://localhost:8347</span>
+          </div>
+
+          <div class="quick-start-item">
+            <strong>Storage Location</strong>
+            <span id="storage-location-display">C:\Users\User\ObsidianNewsDesk</span>
+          </div>
+
+          <div class="quick-start-item">
+            <strong>Documentation</strong>
+            <span>Check README.md in the installation directory</span>
+          </div>
+        </div>
+
+        <p style="margin-top: 24px; font-size: 13px; color: #a0a0a0; text-align: center;">
+          For help and support, visit our documentation or GitHub issues page.
+        </p>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="wizard-footer">
+      <div>
+        <button id="btn-prev" class="btn btn-outline" style="display: none;">
+          ← Back
+        </button>
+      </div>
+      <div class="btn-group">
+        <button id="btn-next" class="btn btn-primary">
+          Next →
+        </button>
+        <button id="btn-finish" class="btn btn-success" style="display: none;">
+          Launch Application
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="../wizard.js"></script>
+</body>
+</html>

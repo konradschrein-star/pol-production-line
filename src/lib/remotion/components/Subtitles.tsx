@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, interpolate } from 'remotion';
 import { WordTimestamp } from '../types';
+import { calculateSubtitleStyle, selectAnimationStyle } from '../animations/subtitle-styles';
 
 export interface SubtitlesProps {
   wordTimestamps: WordTimestamp[];
@@ -86,6 +87,10 @@ export const Subtitles: React.FC<SubtitlesProps> = ({
 
   const opacity = Math.min(fadeIn, fadeOut);
 
+  // Apply dynamic animation style based on text content
+  const animationStyle = calculateSubtitleStyle(activeChunk.text, opacity);
+  const selectedStyle = selectAnimationStyle(activeChunk.text);
+
   return (
     <AbsoluteFill
       style={{
@@ -101,9 +106,11 @@ export const Subtitles: React.FC<SubtitlesProps> = ({
           padding: '14px 28px',
           borderRadius: '8px',
           maxWidth: '85%',
-          opacity,
-          transform: `translateY(${(1 - opacity) * 10}px)`, // Subtle vertical slide
+          opacity: animationStyle.opacity,
+          transform: animationStyle.transform,
+          filter: animationStyle.filter,
         }}
+        data-animation-style={selectedStyle}
       >
         <p
           style={{

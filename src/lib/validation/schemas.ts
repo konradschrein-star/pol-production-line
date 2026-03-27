@@ -223,7 +223,7 @@ export const sceneRegenerateSchema = z.object({
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  sort_by: z.enum(['created_at', 'updated_at', 'status']).optional(),
+  sort_by: z.enum(['created_at', 'updated_at', 'status']).default('created_at'),
   sort_order: z.enum(['asc', 'desc']).default('desc'),
 });
 
@@ -232,6 +232,7 @@ export const paginationSchema = z.object({
  */
 export const jobFilterSchema = paginationSchema.extend({
   status: z.enum([
+    'all',
     'pending',
     'analyzing',
     'generating_images',

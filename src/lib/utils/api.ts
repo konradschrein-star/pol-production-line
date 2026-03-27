@@ -35,7 +35,7 @@ export async function createJob(rawScript: string) {
 export async function updateScene(
   jobId: string,
   sceneId: string,
-  updates: { ticker_headline?: string }
+  updates: { ticker_headline?: string; image_prompt?: string }
 ) {
   const res = await fetch(`/api/jobs/${jobId}/scenes/${sceneId}`, {
     method: 'PATCH',

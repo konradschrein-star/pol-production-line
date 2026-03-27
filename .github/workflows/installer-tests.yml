@@ -1,0 +1,96 @@
+name: Installer Validation Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  test-installer:
+    name: Test Installer on Windows
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup environment file
+        run: |
+          Copy-Item .env.example .env
+        shell: pwsh
+
+      - name: Configure test API keys
+        run: |
+          (Get-Content .env) -replace 'your_openai_api_key_here', '${{ secrets.TEST_OPENAI_API_KEY }}' | Set-Content .env
+          (Get-Content .env) -replace 'your_whisk_api_token_here', '${{ secrets.TEST_WHISK_API_TOKEN }}' | Set-Content .env
+          (Get-Content .env) -replace 'your_admin_api_key_here', '${{ secrets.TEST_ADMIN_API_KEY }}' | Set-Content .env
+        shell: pwsh
+
+      - name: Download FFmpeg binaries
+        run: npm run download-ffmpeg
+
+      - name: Start Docker services
+        run: docker-compose up -d
+
+      - name: Wait for Docker services
+        run: |
+          echo "Waiting for PostgreSQL..."
+          for ($i = 0; $i -lt 30; $i++) {
+            docker exec obsidian-news-desk-postgres-1 pg_isready -h localhost -p 5432 -U postgres
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 2
+          }
+          echo "Waiting for Redis..."
+          for ($i = 0; $i -lt 30; $i++) {
+            docker exec obsidian-news-desk-redis-1 redis-cli ping
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds 2
+          }
+        shell: pwsh
+
+      - name: Initialize database
+        run: npm run init-db
+
+      - name: Run system setup validation
+        run: npm run setup
+
+      - name: Run quick tests
+        run: npm run test:quick
+
+      - name: Start web server in background
+        run: |
+          Start-Process npm -ArgumentList "run", "dev" -WindowStyle Hidden
+          Start-Sleep -Seconds 10
+        shell: pwsh
+
+      - name: Run installer validation tests
+        run: npm run test:installer
+
+      - name: Upload test artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-artifacts
+          path: |
+            obsidian-news-desk/tmp/**
+            logs/**
+            *.log
+          retention-days: 7
+
+      - name: Cleanup Docker services
+        if: always()
+        run: docker-compose down -v

@@ -9,7 +9,7 @@ services:
       POSTGRES_USER: obsidian
       POSTGRES_PASSWORD: obsidian_password
     ports:
-      - "7891:5432"
+      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./src/lib/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
@@ -24,7 +24,7 @@ services:
     container_name: obsidian-redis
     command: redis-server --requirepass obsidian_redis_password --appendonly yes
     ports:
-      - "7892:6379"
+      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:

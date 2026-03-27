@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Whisk Token Manager - Production",
+  "version": "2.0.0",
+  "description": "Automatic OAuth token capture from Whisk auth session with 12-hour auto-refresh and error recovery",
+  "permissions": [
+    "storage",
+    "tabs",
+    "webRequest",
+    "scripting",
+    "alarms",
+    "notifications"
+  ],
+  "host_permissions": [
+    "https://labs.google/*",
+    "https://*.googleapis.com/*",
+    "http://localhost/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup-enhanced-fixed.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    },
+    "default_title": "Whisk Token Manager - Production Ready"
+  },
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://labs.google/fx/tools/whisk/*"],
+      "js": ["whisk-automator.js"],
+      "run_at": "document_end",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["icon*.png"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

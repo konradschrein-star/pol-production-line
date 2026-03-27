@@ -127,3 +127,30 @@ CREATE INDEX idx_generation_history_scene_id ON generation_history(scene_id);
 CREATE INDEX idx_generation_history_job_id ON generation_history(job_id);
 CREATE INDEX idx_generation_history_created_at ON generation_history(created_at DESC);
 CREATE INDEX idx_generation_history_success ON generation_history(success);
+
+-- ============================================================================
+-- STYLE PRESETS TABLE
+-- ============================================================================
+
+-- Style presets for consistent visual branding
+CREATE TABLE IF NOT EXISTS style_presets (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(100) NOT NULL UNIQUE,
+    description TEXT,
+    config JSONB NOT NULL DEFAULT '{}',
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Trigger for updated_at
+CREATE TRIGGER update_style_presets_updated_at
+    BEFORE UPDATE ON style_presets
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- Insert default style presets
+INSERT INTO style_presets (name, description, config, is_default) VALUES
+('Default', 'Standard news broadcast style', '{"aspect_ratio": "landscape"}', TRUE),
+('Cinematic', 'Cinematic wide-angle shots', '{"aspect_ratio": "landscape", "style": "cinematic"}', FALSE),
+('Retro Broadcast', 'Vintage news aesthetic', '{"aspect_ratio": "square", "style": "retro"}', FALSE)
+ON CONFLICT (name) DO NOTHING;

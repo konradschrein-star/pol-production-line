@@ -10,6 +10,7 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { AdaptiveRateLimiter, calculateBackoff } from '../rate-limiter';
 import { PromptSanitizer, quickSanitize } from '../../ai/prompt-sanitizer';
+import { PromptSimplifier } from '../../ai/prompt-simplifier';
 import { stylePresetManager } from '../../style-presets/manager';
 import { referenceManager } from '../../whisk/reference-manager';
 import { getBaseStoragePath } from '../../storage/path-resolver';
@@ -73,8 +74,9 @@ export const imagesWorker = new Worker<ImageJobData>(
   'queue_images',
   async (job: Job<ImageJobData>) => {
     const { sceneId, imagePrompt, jobId } = job.data;
+    const attemptNumber = job.attemptsMade;
 
-    console.log(`\n🖼️ [IMAGES] Starting image generation for scene ${sceneId}`);
+    console.log(`\n🖼️ [IMAGES] Starting image generation for scene ${sceneId} (attempt ${attemptNumber + 1}/${MAX_RETRIES})`);
     console.log(`📝 Prompt: ${imagePrompt.substring(0, 100)}...`);
 
     try {
@@ -86,8 +88,23 @@ export const imagesWorker = new Worker<ImageJobData>(
 
       console.log(`✅ [IMAGES] Scene status updated to 'generating'`);
 
-      // 2. Fetch and apply style preset if job has one
+      // 2. QUALITY MANAGEMENT: Check if this is final retry attempt
+      // If so, use simplified prompt to increase success rate
       let currentPrompt = imagePrompt;
+
+      if (attemptNumber === MAX_RETRIES - 1) {
+        // This is the FINAL attempt - use aggressive simplification
+        currentPrompt = PromptSimplifier.simplify(imagePrompt, 2);
+        console.warn(`⚠️ [IMAGES] FINAL RETRY - Using simplified prompt:`);
+        console.warn(`   Original: ${imagePrompt.substring(0, 80)}...`);
+        console.warn(`   Simplified: ${currentPrompt}`);
+      } else if (attemptNumber === MAX_RETRIES - 2) {
+        // This is the second-to-last attempt - use light simplification
+        currentPrompt = PromptSimplifier.simplify(imagePrompt, 1);
+        console.warn(`⚠️ [IMAGES] Second retry - Using lightly simplified prompt`);
+      }
+
+      // 3. Fetch and apply style preset if job has one (after simplification)
       const jobStyleResult = await db.query(
         'SELECT style_preset_id FROM news_jobs WHERE id = $1',
         [jobId]
@@ -96,7 +113,7 @@ export const imagesWorker = new Worker<ImageJobData>(
       if (jobStyleResult.rows[0]?.style_preset_id) {
         const presetId = jobStyleResult.rows[0].style_preset_id;
         try {
-          currentPrompt = await stylePresetManager.applyToPrompt(imagePrompt, presetId);
+          currentPrompt = await stylePresetManager.applyToPrompt(currentPrompt, presetId);
           console.log(`📐 [IMAGES] Applied style preset to prompt`);
         } catch (error) {
           console.warn(`⚠️  [IMAGES] Failed to apply style preset ${presetId}, using original prompt:`, error);
@@ -194,6 +211,22 @@ export const imagesWorker = new Worker<ImageJobData>(
         } catch (error) {
           const errorMessage = error instanceof Error ? error.message : String(error);
 
+          // Parse Whisk API error details for specific policy violation codes
+          let whiskErrorReason = '';
+          try {
+            // Whisk errors are formatted as: "Whisk API error: 400 - {json}"
+            const jsonMatch = errorMessage.match(/\{.*\}/s);
+            if (jsonMatch) {
+              const errorData = JSON.parse(jsonMatch[0]);
+              const details = errorData?.error?.details;
+              if (Array.isArray(details) && details.length > 0) {
+                whiskErrorReason = details[0]?.reason || '';
+              }
+            }
+          } catch (parseError) {
+            // Ignore JSON parse errors
+          }
+
           // Check if this is a content policy violation
           const isPolicyViolation =
             errorMessage.includes('content policy') ||
@@ -202,12 +235,18 @@ export const imagesWorker = new Worker<ImageJobData>(
             errorMessage.includes('violated') ||
             errorMessage.includes('blocked') ||
             errorMessage.includes('prohibited') ||
-            (error as any)?.status === 400; // Whisk may return 400 for policy violations
+            whiskErrorReason.includes('FILTER_FAILED') || // Whisk-specific: PROMINENT_PEOPLE_FILTER_FAILED, etc.
+            whiskErrorReason.includes('POLICY') ||
+            whiskErrorReason.includes('SAFETY') ||
+            (errorMessage.includes('400') && whiskErrorReason); // 400 with a reason code = policy violation
 
           if (isPolicyViolation && sanitizationAttempt < MAX_PROMPT_SANITIZATION_ATTEMPTS - 1) {
             sanitizationAttempt++;
             console.warn(`⚠️  [IMAGES] Content policy violation detected (attempt ${sanitizationAttempt}/${MAX_PROMPT_SANITIZATION_ATTEMPTS})`);
-            console.warn(`   Error: ${errorMessage.substring(0, 100)}`);
+            if (whiskErrorReason) {
+              console.warn(`   Whisk API Reason: ${whiskErrorReason}`);
+            }
+            console.warn(`   Error: ${errorMessage.substring(0, 150)}`);
             console.warn(`   Rewriting prompt to be policy-compliant...`);
 
             // Record failed attempt in generation_history
@@ -333,35 +372,73 @@ export const imagesWorker = new Worker<ImageJobData>(
       console.log(`📊 [IMAGES] Job progress: ${completed}/${total} scenes complete`);
 
       if (parseInt(completed) === parseInt(total)) {
-        // All scenes done → check avatar mode
-        const avatarMode = process.env.AVATAR_MODE || 'manual';
-
-        // PRODUCTION HARDENING: Use advisory lock-based state transition to prevent race conditions
-        // Multiple workers may complete their scenes simultaneously and all try to transition
-        // Only one worker will succeed in acquiring the lock and transitioning the state
-        const transitioned = await transitionJobStateStandalone(
-          jobId,
-          'generating_images',
-          'review_assets'
+        // All scenes done → check if auto-approve is enabled
+        const jobResult = await db.query(
+          'SELECT job_metadata, avatar_mp4_url FROM news_jobs WHERE id = $1',
+          [jobId]
         );
 
-        // Check if this worker won the race to update the status
-        if (!transitioned) {
-          console.log(`⏭️  [IMAGES] Job ${jobId} already transitioned by another worker`);
-          return {
-            success: true,
-            sceneId,
-            message: 'Scene completed but status already updated'
-          };
-        }
+        const job_metadata = jobResult.rows[0]?.job_metadata || {};
+        const avatar_mp4_url = jobResult.rows[0]?.avatar_mp4_url;
+        const skipReview = job_metadata.skip_review === true;
 
-        if (avatarMode === 'automated') {
-          // Automated mode: Queue for avatar automation
-          await queueAvatarAutomation.add('generate-avatar', { jobId });
-          console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → avatar automation queued`);
+        // Check if auto-approve is enabled AND avatar is already uploaded
+        if (skipReview && avatar_mp4_url) {
+          console.log(`⏭️  [IMAGES] Auto-approve enabled for job ${jobId} - skipping human review`);
+
+          // Import queueRender
+          const { queueRender } = await import('../queues');
+
+          // Transition directly to rendering
+          const transitioned = await transitionJobStateStandalone(
+            jobId,
+            'generating_images',
+            'rendering'
+          );
+
+          if (!transitioned) {
+            console.log(`⏭️  [IMAGES] Job ${jobId} already transitioned by another worker`);
+            return {
+              success: true,
+              sceneId,
+              message: 'Scene completed but status already updated'
+            };
+          }
+
+          // Queue for rendering immediately
+          await queueRender.add('render-video', { jobId });
+          console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → rendering (auto-approved)`);
         } else {
-          // Manual mode: Pause at review_assets for human intervention
-          console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → review_assets (manual avatar generation required)`);
+          // Standard workflow: transition to review_assets
+          const avatarMode = process.env.AVATAR_MODE || 'manual';
+
+          // PRODUCTION HARDENING: Use advisory lock-based state transition to prevent race conditions
+          const transitioned = await transitionJobStateStandalone(
+            jobId,
+            'generating_images',
+            'review_assets'
+          );
+
+          if (!transitioned) {
+            console.log(`⏭️  [IMAGES] Job ${jobId} already transitioned by another worker`);
+            return {
+              success: true,
+              sceneId,
+              message: 'Scene completed but status already updated'
+            };
+          }
+
+          if (avatarMode === 'automated') {
+            // Automated mode: Queue for avatar automation
+            await queueAvatarAutomation.add('generate-avatar', { jobId });
+            console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → avatar automation queued`);
+          } else {
+            // Manual mode: Pause at review_assets for human intervention
+            if (skipReview && !avatar_mp4_url) {
+              console.log(`⚠️  [IMAGES] Auto-approve enabled but avatar not uploaded yet. Waiting at review_assets...`);
+            }
+            console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → review_assets (manual avatar generation required)`);
+          }
         }
       }
 
@@ -430,16 +507,25 @@ export const imagesWorker = new Worker<ImageJobData>(
         throw error; // Retry after backoff
       }
 
-      // Handle retry logic
+      // Handle retry logic (prompt simplification happens at worker start)
       if (attemptNumber < MAX_RETRIES - 1) {
         // More retries available - update status and backoff
         rateLimiter.onError(); // Non-rate-limit error
 
         const backoffDelay = calculateBackoff(attemptNumber, RETRY_BACKOFF_BASE);
 
+        // Provide helpful error message indicating what will happen next
+        let retryMessage = `Failed (attempt ${attemptNumber + 1}/${MAX_RETRIES}). Retrying in ${backoffDelay / 1000}s...`;
+
+        if (attemptNumber === MAX_RETRIES - 2) {
+          retryMessage = `Failed ${attemptNumber + 1} times. FINAL retry with simplified prompt in ${backoffDelay / 1000}s...`;
+        } else if (attemptNumber === MAX_RETRIES - 3) {
+          retryMessage = `Failed ${attemptNumber + 1} times. Next retry will use lighter prompt in ${backoffDelay / 1000}s...`;
+        }
+
         await db.query(
           'UPDATE news_scenes SET generation_status = $1, error_message = $2, retry_count = $3 WHERE id = $4',
-          ['pending', `Failed (attempt ${attemptNumber + 1}). Retrying in ${backoffDelay / 1000}s...`, attemptNumber + 1, sceneId]
+          ['pending', retryMessage, attemptNumber + 1, sceneId]
         );
 
         console.warn(`⚠️ [IMAGES] Retrying scene ${sceneId} in ${backoffDelay / 1000}s...`);
@@ -460,6 +546,13 @@ export const imagesWorker = new Worker<ImageJobData>(
   {
     connection: redisOptions,
     concurrency: process.env.WHISK_CONCURRENCY ? parseInt(process.env.WHISK_CONCURRENCY) : 3, // 3 parallel generations (increased from 2 for faster processing)
+
+    // CRITICAL: Timeout settings to prevent stuck jobs
+    lockDuration: 180000, // 3 minutes - max time a job can be locked (prevents stuck jobs)
+    lockRenewTime: 30000, // 30 seconds - renew lock every 30s while job is active
+    stalledInterval: 60000, // 60 seconds - check for stalled jobs every minute
+    maxStalledCount: 2, // After 2 stalls, mark job as failed
+
     removeOnComplete: {
       age: 3600, // Keep completed jobs for 1 hour
       count: 100, // Keep last 100 jobs
@@ -476,10 +569,24 @@ imagesWorker.on('completed', (job) => {
 
 imagesWorker.on('failed', (job, err) => {
   console.error(`❌ [IMAGES] Worker failed job ${job?.id}:`, err);
+
+  // Update scene status to failed if job failed
+  if (job?.data?.sceneId) {
+    db.query(
+      'UPDATE news_scenes SET generation_status = $1, error_message = $2 WHERE id = $3',
+      ['failed', `Job failed: ${err.message}`, job.data.sceneId]
+    ).catch(e => console.error('Failed to update scene status:', e));
+  }
 });
 
 imagesWorker.on('error', (err) => {
   console.error(`❌ [IMAGES] Worker error:`, err);
+});
+
+imagesWorker.on('stalled', (jobId, prev) => {
+  console.error(`⚠️ [IMAGES] Job ${jobId} STALLED (was in state: ${prev})`);
+  console.error(`   This usually means the job timed out or worker crashed`);
+  console.error(`   Job will be automatically retried or marked as failed`);
 });
 
 imagesWorker.on('paused', () => {

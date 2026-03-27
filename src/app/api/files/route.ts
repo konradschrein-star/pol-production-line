@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
     // Get file path from query parameter
     const { searchParams } = new URL(req.url);
     const filePath = searchParams.get('path');
+    const downloadFilename = searchParams.get('filename'); // Optional custom filename for downloads
 
     // Validate path parameter
     if (!filePath) {
@@ -39,6 +40,9 @@ export async function GET(req: NextRequest) {
     }
 
     console.log(`📁 [Files API] Request for: ${filePath}`);
+    if (downloadFilename) {
+      console.log(`📝 [Files API] Custom download filename: ${downloadFilename}`);
+    }
 
     // Resolve path (handles both relative and absolute for backward compatibility)
     const resolvedPath = isAbsolute(filePath)
@@ -87,14 +91,23 @@ export async function GET(req: NextRequest) {
 
     console.log(`✅ [Files API] Serving ${normalizedPath} (${contentType}, ${buffer.length} bytes)`);
 
+    // Prepare headers
+    const headers: Record<string, string> = {
+      'Content-Type': contentType,
+      'Cache-Control': 'public, max-age=31536000, immutable', // Cache for 1 year
+      'Content-Length': buffer.length.toString(),
+    };
+
+    // Add Content-Disposition header for downloads with custom filename
+    if (downloadFilename) {
+      // Sanitize filename to prevent header injection
+      const sanitizedFilename = downloadFilename.replace(/[^\w\s\-_.()]/g, '_');
+      headers['Content-Disposition'] = `attachment; filename="${sanitizedFilename}"`;
+      console.log(`📥 [Files API] Set download filename: ${sanitizedFilename}`);
+    }
+
     // Return file with appropriate headers
-    return new NextResponse(buffer, {
-      headers: {
-        'Content-Type': contentType,
-        'Cache-Control': 'public, max-age=31536000, immutable', // Cache for 1 year
-        'Content-Length': buffer.length.toString(),
-      },
-    });
+    return new NextResponse(buffer, { headers });
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';

@@ -1,0 +1,138 @@
+{
+  "jobId": "61d374c9-8bf7-45f0-bfd6-c10b97de5196",
+  "avatarScript": "",
+  "scenes": [
+    {
+      "id": 1,
+      "image_prompt": "Photorealistic image of the US Capitol building at dawn, professional news photography, symbolizing legislative action",
+      "ticker_headline": "BREAKING: SENATE PASSES LANDMARK CLIMATE BILL",
+      "image_url": null
+    },
+    {
+      "id": 2,
+      "image_prompt": "Close-up shot of a gavel on a legislative desk in a Senate chamber, blurred background of senators, professional news imagery",
+      "ticker_headline": "CLEAN ENERGY INNOVATION ACT MOVES FORWARD",
+      "image_url": null
+    },
+    {
+      "id": 3,
+      "image_prompt": "Digital display showing voting results 68-32 in a legislative chamber, green 'YES' and red 'NO' indicators, news graphic style",
+      "ticker_headline": "HISTORIC CLIMATE VOTE: 68-32 PASSAGE",
+      "image_url": null
+    },
+    {
+      "id": 4,
+      "image_prompt": "Environmental activists celebrating with placards showing green energy symbols, joyful expressions, news reportage style",
+      "ticker_headline": "ENVIRONMENTAL GROUPS HAIL MAJOR VICTORY",
+      "image_url": null
+    },
+    {
+      "id": 5,
+      "image_prompt": "Corporate leaders in a boardroom setting, looking thoughtfully at a financial projection screen, cautious optimism, professional photo",
+      "ticker_headline": "INDUSTRY LEADERS CAUTIOUSLY OPTIMISTIC",
+      "image_url": null
+    },
+    {
+      "id": 6,
+      "image_prompt": "Infographic showing a timeline of 10 years with $200 billion investment in renewable energy, clean modern design",
+      "ticker_headline": "$200 BILLION INVESTMENT IN RENEWABLE ENERGY",
+      "image_url": null
+    },
+    {
+      "id": 7,
+      "image_prompt": "Vast field of modern wind turbines at sunset with solar panels in the foreground, clean energy landscape, professional news imagery",
+      "ticker_headline": "MAJOR INVESTMENTS IN WIND & SOLAR POWER",
+      "image_url": null
+    },
+    {
+      "id": 8,
+      "image_prompt": "Natural gas pipeline infrastructure against a clear sky, symbolizing energy transition debates, industrial photography",
+      "ticker_headline": "CRITICS TARGET NATURAL GAS SUBSIDIES",
+      "image_url": null
+    },
+    {
+      "id": 9,
+      "image_prompt": "Two hands shaking over a document with 'COMPROMISE' written, symbolizing bipartisan agreement, professional photo",
+      "ticker_headline": "PRAGMATIC COMPROMISE SECURES PASSAGE",
+      "image_url": null
+    },
+    {
+      "id": 10,
+      "image_prompt": "Geopolitical map highlighting the South China Sea region with overlapping naval symbols, news graphic style",
+      "ticker_headline": "TENSIONS ESCALATE IN SOUTH CHINA SEA",
+      "image_url": null
+    },
+    {
+      "id": 11,
+      "image_prompt": "Naval vessels from different nations conducting exercises in open waters, distant view, professional maritime photography",
+      "ticker_headline": "THREE NATIONS CONDUCT OVERLAPPING EXERCISES",
+      "image_url": null
+    },
+    {
+      "id": 12,
+      "image_prompt": "US Navy warship in close proximity to a Chinese naval vessel, showing a tense encounter, professional news photo",
+      "ticker_headline": "US SEVENTH FLEET REPORTS CLOSE ENCOUNTERS",
+      "image_url": null
+    },
+    {
+      "id": 13,
+      "image_prompt": "Symbolic image of a ship navigating through open sea with a 'FREEDOM OF NAVIGATION' banner, clear blue waters, professional photo",
+      "ticker_headline": "ALLIES CONCERNED OVER FREEDOM OF NAVIGATION",
+      "image_url": null
+    },
+    {
+      "id": 14,
+      "image_prompt": "Split image: one side showing a handshake (diplomacy), other side showing a radar screen with multiple contacts (tension), news graphic",
+      "ticker_headline": "DIPLOMATIC CHANNELS REMAIN OPEN AMIDST TENSION",
+      "image_url": null
+    },
+    {
+      "id": 15,
+      "image_prompt": "Stock market ticker displaying European index names like DAX and CAC 40 with positive green numbers, financial news graphic",
+      "ticker_headline": "EUROPEAN MARKETS RALLY ON STRONG DATA",
+      "image_url": null
+    },
+    {
+      "id": 16,
+      "image_prompt": "Upward trending stock market graph with 'DAX' and 'CAC 40' labels, showing significant percentage gains, financial news style",
+      "ticker_headline": "DAX SURGES 3.7%, CAC 40 GAINS 2.9%",
+      "image_url": null
+    },
+    {
+      "id": 17,
+      "image_prompt": "Industrial factory floor with machinery in operation, symbolizing manufacturing output, modern industrial photography",
+      "ticker_headline": "BETTER-THAN-EXPECTED MANUFACTURING OUTPUT",
+      "image_url": null
+    },
+    {
+      "id": 18,
+      "image_prompt": "Abstract visualization of economic growth for the Eurozone, with a subtle background warning sign for inflation, clean infographic",
+      "ticker_headline": "EUROZONE RECOVERY SIGNALED, INFLATION CONCERNS PERSIST",
+      "image_url": null
+    },
+    {
+      "id": 19,
+      "image_prompt": "Futuristic laboratory setting with glowing circuits and advanced computing equipment, symbolizing quantum computing, high-tech photo",
+      "ticker_headline": "QUANTUM COMPUTING BREAKTHROUGH ANNOUNCED",
+      "image_url": null
+    },
+    {
+      "id": 20,
+      "image_prompt": "Close-up of a sophisticated quantum processor chip, intricate design, glowing elements, professional technology photography",
+      "ticker_headline": "MIT DEVELOPS 500-QUBIT ROOM-TEMPERATURE PROCESSOR",
+      "image_url": null
+    },
+    {
+      "id": 21,
+      "image_prompt": "Abstract representation of various industry sectors (medical, finance, AI) connected by glowing lines, symbolizing broad adoption, futuristic graphic",
+      "ticker_headline": "GAME-CHANGING MOMENT FOR QUANTUM ADOPTION",
+      "image_url": null
+    },
+    {
+      "id": 22,
+      "image_prompt": "Soccer stadium with a packed crowd cheering, dynamic action shot of a player scoring, professional sports photography",
+      "ticker_headline": "WORLD CUP QUALIFIERS SEE STUNNING UPSETS",
+      "image_url": null
+    }
+  ]
+}

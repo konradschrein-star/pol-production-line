@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Starting Obsidian News Desk...</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a1a;
+      color: #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    .splash-container {
+      text-align: center;
+      max-width: 500px;
+      padding: 40px;
+    }
+
+    .logo {
+      font-size: 64px;
+      margin-bottom: 24px;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+      }
+    }
+
+    h1 {
+      font-size: 28px;
+      font-weight: 600;
+      color: #ffffff;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      font-size: 15px;
+      color: #a0a0a0;
+      margin-bottom: 40px;
+    }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border: 4px solid #333;
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 24px;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .status-text {
+      font-size: 14px;
+      color: #a0a0a0;
+      margin-bottom: 16px;
+      min-height: 20px;
+    }
+
+    .progress-container {
+      width: 100%;
+      height: 4px;
+      background: #333;
+      border-radius: 2px;
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, #3b82f6, #2563eb);
+      width: 0%;
+      transition: width 0.3s ease;
+      border-radius: 2px;
+    }
+
+    .steps {
+      text-align: left;
+      margin-top: 32px;
+    }
+
+    .step {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+      font-size: 13px;
+      color: #666;
+    }
+
+    .step.active {
+      color: #3b82f6;
+    }
+
+    .step.completed {
+      color: #22c55e;
+    }
+
+    .step-icon {
+      width: 20px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="splash-container">
+    <div class="logo">🎬</div>
+
+    <h1>Obsidian News Desk</h1>
+    <p class="subtitle">Starting services...</p>
+
+    <div class="spinner"></div>
+
+    <div class="status-text" id="status-text">Initializing...</div>
+
+    <div class="progress-container">
+      <div class="progress-bar" id="progress-bar"></div>
+    </div>
+
+    <div class="steps">
+      <div class="step" id="step-ports">
+        <span class="step-icon">○</span>
+        <span>Checking ports</span>
+      </div>
+      <div class="step" id="step-docker">
+        <span class="step-icon">○</span>
+        <span>Starting Docker containers</span>
+      </div>
+      <div class="step" id="step-health">
+        <span class="step-icon">○</span>
+        <span>Waiting for services</span>
+      </div>
+      <div class="step" id="step-database">
+        <span class="step-icon">○</span>
+        <span>Initializing database</span>
+      </div>
+      <div class="step" id="step-workers">
+        <span class="step-icon">○</span>
+        <span>Starting workers</span>
+      </div>
+      <div class="step" id="step-nextjs">
+        <span class="step-icon">○</span>
+        <span>Starting Next.js</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Receive progress updates from main process
+    if (window.electronAPI) {
+      window.electronAPI.onStartupProgress((progress) => {
+        updateProgress(progress);
+      });
+    }
+
+    function updateProgress(progress) {
+      const statusText = document.getElementById('status-text');
+      const progressBar = document.getElementById('progress-bar');
+
+      // Update status text
+      if (statusText) {
+        statusText.textContent = progress.message;
+      }
+
+      // Update progress bar
+      const stepMap = {
+        'ports': 1,
+        'docker': 2,
+        'health': 3,
+        'database': 4,
+        'workers': 5,
+        'nextjs': 6,
+      };
+
+      const stepNumber = stepMap[progress.step] || 0;
+      const percent = (stepNumber / 6) * 100;
+
+      if (progressBar) {
+        progressBar.style.width = `${percent}%`;
+      }
+
+      // Update step status
+      const stepEl = document.getElementById(`step-${progress.step}`);
+      if (stepEl) {
+        const icon = stepEl.querySelector('.step-icon');
+
+        if (progress.status === 'in_progress') {
+          stepEl.classList.add('active');
+          if (icon) icon.textContent = '⏳';
+        } else if (progress.status === 'completed') {
+          stepEl.classList.remove('active');
+          stepEl.classList.add('completed');
+          if (icon) icon.textContent = '✓';
+        } else if (progress.status === 'failed') {
+          stepEl.classList.remove('active');
+          stepEl.style.color = '#ef4444';
+          if (icon) icon.textContent = '✗';
+        }
+      }
+    }
+  </script>
+</body>
+</html>

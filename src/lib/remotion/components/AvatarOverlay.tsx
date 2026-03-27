@@ -1,16 +1,39 @@
 import React, { useMemo } from 'react';
 import {
   AbsoluteFill,
-  Video,
+  OffthreadVideo,
   staticFile,
   useVideoConfig,
+  useCurrentFrame,
+  interpolate,
 } from 'remotion';
+
+/**
+ * Convert absolute path to relative path for staticFile()
+ * Examples:
+ *  - "C:\\...\\public\\avatars\\file.mp4" -> "avatars/file.mp4"
+ *  - "C:\\...\\avatars\\file.mp4" -> "avatars/file.mp4"
+ *  - "public/avatars/file.mp4" -> "avatars/file.mp4"
+ *  - "avatars/file.mp4" -> "avatars/file.mp4"
+ */
+function toStaticFilePath(filePath: string): string {
+  // Normalize separators to forward slashes
+  const normalized = filePath.replace(/\\/g, '/');
+
+  // Extract filename from path
+  const filename = normalized.split('/').pop() || filePath;
+
+  // Always return avatars/filename for avatar files
+  // This ensures Remotion loads from /avatars/ (served from public folder)
+  return `avatars/${filename}`;
+}
 
 export interface AvatarOverlayProps {
   avatarMp4Url: string;
   avatarAspectRatio?: number; // width/height (e.g., 0.5625 for 9:16, 1.0 for 1:1, 1.777 for 16:9)
   position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
   heightPercent?: number; // Height as percentage of composition (default: 40%)
+  enablePositionVariation?: boolean; // Enable subtle position oscillation (default: true)
 }
 
 /**
@@ -30,9 +53,11 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
   avatarMp4Url,
   avatarAspectRatio,
   position = 'bottom-right',
-  heightPercent = 40,
+  heightPercent = 50, // Increased from 40% for better visibility
+  enablePositionVariation = false, // DISABLED: Keep avatar static, no movement
 }) => {
   const { width: compositionWidth, height: compositionHeight } = useVideoConfig();
+  const frame = useCurrentFrame();
 
   // Calculate container size to match avatar aspect ratio
   const containerSize = useMemo(() => {
@@ -58,10 +83,29 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
       height: `${heightPercent}%`,
     };
   }, [avatarAspectRatio, compositionWidth, compositionHeight, heightPercent]);
-  // Position styles
-  const positionStyles: Record<string, React.CSSProperties> = {
+  // Calculate subtle position oscillation
+  // Uses slow sine wave for natural breathing motion
+  const positionOffset = useMemo(() => {
+    if (!enablePositionVariation) {
+      return { x: 0, y: 0 };
+    }
+
+    // Slow oscillation (period: ~300 frames = 10 seconds at 30fps)
+    const period = 300;
+    const progress = (frame % period) / period;
+    const angle = progress * Math.PI * 2;
+
+    // Small amplitude for subtle effect
+    const xOffset = Math.sin(angle) * 8; // ±8px horizontal
+    const yOffset = Math.sin(angle * 1.3) * 6; // ±6px vertical (different frequency for variety)
+
+    return { x: xOffset, y: yOffset };
+  }, [frame, enablePositionVariation]);
+
+  // Position styles with variation
+  const basePositions: Record<string, { bottom?: number; top?: number; left?: number; right?: number }> = {
     'bottom-right': {
-      bottom: 80, // Above ticker
+      bottom: 100, // Above ticker (adjusted for larger avatar size)
       right: 40,
     },
     'bottom-left': {
@@ -78,12 +122,20 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
     },
   };
 
+  const basePosition = basePositions[position];
+  const positionStyles: React.CSSProperties = {
+    bottom: basePosition.bottom !== undefined ? basePosition.bottom - positionOffset.y : undefined,
+    top: basePosition.top !== undefined ? basePosition.top + positionOffset.y : undefined,
+    left: basePosition.left !== undefined ? basePosition.left + positionOffset.x : undefined,
+    right: basePosition.right !== undefined ? basePosition.right - positionOffset.x : undefined,
+  };
+
   return (
     <AbsoluteFill
       style={{
-        ...positionStyles[position],
-        top: 'auto',
-        left: 'auto',
+        ...positionStyles,
+        top: positionStyles.top !== undefined ? positionStyles.top : 'auto',
+        left: positionStyles.left !== undefined ? positionStyles.left : 'auto',
         width: containerSize.width,
         height: containerSize.height,
         pointerEvents: 'none',
@@ -100,8 +152,14 @@ export const AvatarOverlay: React.FC<AvatarOverlayProps> = ({
           backgroundColor: '#1a1a1a',
         }}
       >
-        <Video
-          src={avatarMp4Url.startsWith('/') ? staticFile(avatarMp4Url) : avatarMp4Url}
+        <OffthreadVideo
+          src={
+            avatarMp4Url.startsWith('http') || avatarMp4Url.startsWith('data:') || avatarMp4Url.startsWith('file://')
+              ? avatarMp4Url
+              : staticFile(toStaticFilePath(avatarMp4Url))
+          }
+          startFrom={0}
+          pauseWhenBuffering={false}
           style={{
             width: '100%',
             height: '100%',

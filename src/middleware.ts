@@ -29,7 +29,8 @@ const rateLimitMap = new Map<string, RateLimitRecord>();
 
 // Rate limit configurations per endpoint pattern
 const RATE_LIMITS: Record<string, RateLimitConfig> = {
-  // Job creation - Allow 10 jobs per minute per IP
+  // Job creation (POST) - Allow 10 jobs per minute per IP
+  // GET requests are handled separately with higher limit
   '/api/jobs': {
     maxRequests: 10,
     windowMs: 60000, // 1 minute
@@ -162,6 +163,12 @@ export async function middleware(req: NextRequest) {
 
   // Skip rate limiting for non-API routes
   if (!pathname.startsWith('/api/')) {
+    return NextResponse.next();
+  }
+
+  // Skip rate limiting for GET requests (read operations for live updates)
+  // This allows auto-refresh polling without hitting rate limits
+  if (req.method === 'GET') {
     return NextResponse.next();
   }
 

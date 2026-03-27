@@ -21,12 +21,39 @@ files:
   - tsconfig.json
   - tailwind.config.ts
   - postcss.config.js
+  - .env.example
   - "!node_modules/@remotion"
   - "!.git"
   - "!.github"
   - "!.vscode"
   - "!**/*.md"
   - "!**/*.log"
+  - "!.env"
+
+# Extra resources (bundled Node.js, Chrome extension, scripts)
+extraResources:
+  # Portable Node.js runtime
+  - from: "resources/node"
+    to: "node"
+    filter:
+      - "**/*"
+
+  # Scripts and utilities
+  - from: "scripts/optimize-avatar.sh"
+    to: "scripts/optimize-avatar.sh"
+
+  # Chrome extension
+  - from: "chrome-extension"
+    to: "chrome-extension"
+    filter:
+      - "**/*"
+      - "!**/node_modules/**"
+  - from: "CHROME_EXTENSION_SETUP.md"
+    to: "CHROME_EXTENSION_SETUP.md"
+
+  # Portable launcher script
+  - from: "launcher.bat"
+    to: "launcher.bat"
 
 # Extend info plist
 extraMetadata:
@@ -42,6 +69,8 @@ win:
   artifactName: ${productName}-Setup-${version}.${ext}
   publisherName: Obsidian News Desk
   verifyUpdateCodeSignature: false
+  sign: null
+  signingHashAlgorithms: null
 
 # NSIS installer configuration
 nsis:
@@ -71,7 +100,8 @@ artifactName: ${name}-${version}-${os}-${arch}.${ext}
 
 # Publish configuration (for auto-updates)
 publish:
-  provider: github
-  owner: konradschrein-star
-  repo: pol-production-line
-  releaseType: release
+  - provider: github
+    owner: konradschrein-star
+    repo: pol-production-line
+    releaseType: release
+    private: false

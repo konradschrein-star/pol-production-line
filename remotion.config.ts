@@ -5,6 +5,9 @@
 
 import { Config } from '@remotion/cli/config';
 
+// Use port 8765 for Remotion to avoid conflict with Next.js dev server (port 3000)
+Config.setPort(8765);
+
 // Ensure public directory is properly served
 Config.setPublicDir('./public');
 

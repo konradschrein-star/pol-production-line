@@ -56,11 +56,35 @@ export const NewsVideo: React.FC<NewsVideoProps> = ({
   // Sort scenes by order
   const sortedScenes = [...scenes].sort((a, b) => a.scene_order - b.scene_order);
 
-  // Map scenes to timing
-  const scenesWithTiming = sortedScenes.map((scene, index) => ({
-    ...scene,
-    timing: pacing.sceneTiming[index],
-  }));
+  console.log(`\n🎬 [NewsVideo] Scene sorting and mapping:`);
+  console.log(`   Input scenes: ${scenes.length}`);
+  console.log(`   Pacing timings: ${pacing.sceneTiming.length}`);
+
+  // CRITICAL VALIDATION: Ensure scene count matches timing count
+  if (scenes.length !== pacing.sceneTiming.length) {
+    console.error(`❌ [NewsVideo] SCENE/TIMING COUNT MISMATCH!`);
+    console.error(`   Database scenes: ${scenes.length}`);
+    console.error(`   Pacing timings: ${pacing.sceneTiming.length}`);
+    console.error(`   This will cause incorrect scene-to-timing mapping!`);
+  }
+
+  // Map scenes to timing with detailed logging
+  const scenesWithTiming = sortedScenes.map((scene, index) => {
+    const timing = pacing.sceneTiming[index];
+
+    console.log(`   [MAPPING] Scene ${index} (scene_order=${scene.scene_order}):`);
+    console.log(`      Timing: Frame ${timing?.startFrame} - ${timing ? timing.startFrame + timing.durationInFrames - 1 : 'N/A'} (${timing?.durationInFrames || 0} frames)`);
+    console.log(`      Image: ${scene.image_url}`);
+
+    if (!timing) {
+      console.error(`      ❌ NO TIMING FOUND FOR SCENE ${index}!`);
+    }
+
+    return {
+      ...scene,
+      timing: timing,
+    };
+  });
 
   // Extract headlines for ticker
   const headlines = sortedScenes.map(s => s.ticker_headline);
@@ -69,33 +93,54 @@ export const NewsVideo: React.FC<NewsVideoProps> = ({
   console.log(`   Total duration: ${avatarDurationSeconds}s (${pacing.totalDurationInFrames} frames)`);
   console.log(`   Avatar aspect ratio: ${avatarAspectRatio?.toFixed(4) || 'not provided'} (${avatarWidth}x${avatarHeight})`);
   console.log(`   Scenes: ${scenes.length}`);
+  console.log(`   Scenes with timing: ${scenesWithTiming.length}`);
   console.log(`   Hook scenes: ${pacing.hookScenes} @ 1.5s`);
   console.log(`   Body scenes: ${pacing.bodyScenes}`);
+
+  console.log(`\n🎥 [NewsVideo] Creating Sequences:`);
+  scenesWithTiming.forEach((scene, index) => {
+    if (scene.timing) {
+      console.log(`   Sequence ${index}: scene_order=${scene.scene_order}, from=${scene.timing.startFrame}, duration=${scene.timing.durationInFrames}, image=${scene.image_url}`);
+    } else {
+      console.error(`   ❌ Sequence ${index}: NO TIMING (will fail to render)`);
+    }
+  });
 
   return (
     <AbsoluteFill style={{ backgroundColor: '#131313' }}>
       {/* Background Scenes with Ken Burns effect */}
-      {scenesWithTiming.map((scene) => (
-        <Sequence
-          key={scene.id}
-          from={scene.timing.startFrame}
-          durationInFrames={scene.timing.durationInFrames}
-          name={`Scene ${scene.scene_order}`}
-        >
-          <Scene
-            imageUrl={scene.image_url}
-            durationInFrames={scene.timing.durationInFrames}
-            enableKenBurns={true}
-          />
-        </Sequence>
-      ))}
+      {scenesWithTiming.map((scene, index) => {
+        if (!scene.timing) {
+          console.error(`❌ [NewsVideo] Skipping scene ${index} - no timing data`);
+          return null;
+        }
 
-      {/* Avatar Overlay (full duration) */}
-      <AvatarOverlay
-        avatarMp4Url={avatarMp4Url}
-        avatarAspectRatio={avatarAspectRatio}
-        position="bottom-right"
-      />
+        return (
+          <Sequence
+            key={scene.id}
+            from={scene.timing.startFrame}
+            durationInFrames={scene.timing.durationInFrames}
+            name={`Scene ${scene.scene_order}`}
+          >
+            <Scene
+              imageUrl={scene.image_url}
+              durationInFrames={scene.timing.durationInFrames}
+              enableKenBurns={true}
+              sceneIndex={index}
+              totalScenes={scenes.length}
+            />
+          </Sequence>
+        );
+      })}
+
+      {/* Avatar Overlay (start from frame 1 to avoid first-frame loading issue) */}
+      <Sequence from={1}>
+        <AvatarOverlay
+          avatarMp4Url={avatarMp4Url}
+          avatarAspectRatio={avatarAspectRatio}
+          position="bottom-right"
+        />
+      </Sequence>
 
       {/* Subtitles (only if word timestamps available) */}
       {wordTimestamps && wordTimestamps.length > 0 && (

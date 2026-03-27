@@ -160,16 +160,15 @@ export const renderWorker = new Worker<RenderJobData>(
           console.warn(`⚠️ [RENDER] Transcription failed:`, errorMessage);
           console.warn(`   Continuing with time-based pacing (fallback)`);
 
-          // Store error in job_metadata for visibility
+          // Store error in job_metadata for visibility (nested jsonb_set)
           await db.query(
             `UPDATE news_jobs
              SET job_metadata = jsonb_set(
-               COALESCE(job_metadata, '{}'::jsonb),
-               '{transcription_error}',
-               to_jsonb($1::text)
-             ),
-             job_metadata = jsonb_set(
-               COALESCE(job_metadata, '{}'::jsonb),
+               jsonb_set(
+                 COALESCE(job_metadata, '{}'::jsonb),
+                 '{transcription_error}',
+                 to_jsonb($1::text)
+               ),
                '{transcription_fallback}',
                'true'::jsonb
              )
@@ -185,16 +184,60 @@ export const renderWorker = new Worker<RenderJobData>(
         console.log(`✅ [RENDER] Using cached word timestamps: ${wordTimestamps.length} words`);
       }
 
-      // 4. Render video
+      // 4. Render video with progress logging
       console.log(`🎥 [RENDER] Starting Remotion render...`);
 
+      // Initial log message
+      await db.query(
+        `UPDATE news_jobs
+         SET render_logs = jsonb_build_array(
+           jsonb_build_object(
+             'timestamp', to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+             'type', 'info',
+             'message', 'Starting video render...'
+           )
+         )
+         WHERE id = $1`,
+        [jobId]
+      );
+
       const renderStartTime = Date.now();
+      let lastLoggedProgress = 0;
+
+      // Progress callback: Push frame progress to database (throttled to every 2%)
+      const onProgress = async (info: { renderedFrames: number; totalFrames: number; progress: number }) => {
+        const progressPercent = Math.floor(info.progress * 100);
+
+        // Only log every 2% to avoid too many DB writes
+        if (progressPercent >= lastLoggedProgress + 2 || progressPercent === 100) {
+          lastLoggedProgress = progressPercent;
+
+          try {
+            await db.query(
+              `UPDATE news_jobs
+               SET render_logs = COALESCE(render_logs, '[]'::jsonb) || jsonb_build_array(
+                 jsonb_build_object(
+                   'timestamp', to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+                   'type', 'info',
+                   'message', 'Frame ' || $1 || '/' || $2 || ' rendered (' || $3 || '%)'
+                 )
+               )
+               WHERE id = $4`,
+              [info.renderedFrames, info.totalFrames, progressPercent, jobId]
+            );
+          } catch (error) {
+            // Don't fail render if logging fails
+            console.error(`Failed to log progress:`, error);
+          }
+        }
+      };
 
       const renderResult = await renderNewsVideo({
         jobId,
         avatarMp4Url: avatar_mp4_url,
         scenes,
         wordTimestamps,
+        onProgress,
       });
 
       // Track temp file for cleanup
@@ -205,6 +248,20 @@ export const renderWorker = new Worker<RenderJobData>(
       console.log(`✅ [RENDER] Video rendered to temp location: ${renderResult.outputPath}`);
       console.log(`   Size: ${(renderResult.sizeInBytes / 1024 / 1024).toFixed(2)} MB`);
       console.log(`   Render time: ${(renderTimeMs / 1000).toFixed(1)}s`);
+
+      // Add completion log
+      await db.query(
+        `UPDATE news_jobs
+         SET render_logs = COALESCE(render_logs, '[]'::jsonb) || jsonb_build_array(
+           jsonb_build_object(
+             'timestamp', to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+             'type', 'success',
+             'message', 'Render completed in ' || $1 || 's (' || $2 || ' MB)'
+           )
+         )
+         WHERE id = $3`,
+        [(renderTimeMs / 1000).toFixed(1), (renderResult.sizeInBytes / 1024 / 1024).toFixed(2), jobId]
+      );
 
       // 4. Move to permanent local storage
       console.log(`💾 [RENDER] Moving to permanent storage...`);
@@ -334,10 +391,22 @@ export const renderWorker = new Worker<RenderJobData>(
     } catch (error) {
       console.error(`❌ [RENDER] Job ${jobId} failed:`, error);
 
-      // Update job status to failed
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Update job status to failed and add error log
       await db.query(
-        'UPDATE news_jobs SET status = $1, error_message = $2 WHERE id = $3',
-        ['failed', error instanceof Error ? error.message : String(error), jobId]
+        `UPDATE news_jobs
+         SET status = $1,
+             error_message = $2,
+             render_logs = COALESCE(render_logs, '[]'::jsonb) || jsonb_build_array(
+               jsonb_build_object(
+                 'timestamp', to_char(NOW(), 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'),
+                 'type', 'error',
+                 'message', 'Render failed: ' || $2
+               )
+             )
+         WHERE id = $3`,
+        ['failed', errorMessage, jobId]
       );
 
       throw error;
