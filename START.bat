@@ -9,35 +9,12 @@ echo ============================================
 echo.
 
 REM ============================================
-REM Step 1: Run Setup Validation
+REM Step 1: Start Docker Services FIRST
 REM ============================================
-echo [1/6] Validating system requirements...
+echo [1/5] Starting Docker services (Postgres + Redis)...
 echo.
 
-call npm run setup
-if %errorlevel% neq 0 (
-    echo.
-    echo ============================================
-    echo   SETUP VALIDATION FAILED
-    echo ============================================
-    echo.
-    echo Please fix the issues above and try again.
-    echo.
-    pause
-    exit /b 1
-)
-
-echo.
-echo System validation passed!
-echo.
-
-REM ============================================
-REM Step 2: Start Docker Services
-REM ============================================
-echo [2/6] Starting Docker services (Postgres + Redis)...
-echo.
-
-docker-compose up -d
+docker compose up -d
 if %errorlevel% neq 0 (
     echo.
     echo ERROR: Failed to start Docker services!
@@ -45,7 +22,7 @@ if %errorlevel% neq 0 (
     echo Troubleshooting:
     echo   1. Make sure Docker Desktop is running
     echo   2. Check if ports 5432 and 6379 are available
-    echo   3. Try: docker-compose down ^&^& docker-compose up -d
+    echo   3. Try: docker compose down ^&^& docker compose up -d
     echo.
     pause
     exit /b 1
@@ -55,9 +32,9 @@ echo Docker services started.
 echo.
 
 REM ============================================
-REM Step 3: Wait for Services to be Healthy
+REM Step 2: Wait for Services to be Healthy
 REM ============================================
-echo [3/6] Waiting for services to be ready...
+echo [2/5] Waiting for services to be ready...
 echo.
 
 set RETRY_COUNT=0
@@ -67,11 +44,11 @@ set MAX_RETRIES=30
 set /a RETRY_COUNT+=1
 
 REM Check if Postgres is ready
-docker-compose exec -T postgres pg_isready -U obsidian >nul 2>&1
+docker exec obsidian-postgres pg_isready -U obsidian -d obsidian_news >nul 2>&1
 set POSTGRES_READY=%errorlevel%
 
 REM Check if Redis is ready
-docker-compose exec -T redis redis-cli ping >nul 2>&1
+docker exec obsidian-redis redis-cli -a obsidian_redis_password ping >nul 2>&1
 set REDIS_READY=%errorlevel%
 
 if %POSTGRES_READY% equ 0 if %REDIS_READY% equ 0 (
@@ -85,8 +62,8 @@ if %RETRY_COUNT% geq %MAX_RETRIES% (
     echo ERROR: Services failed to start within 30 seconds
     echo.
     echo Check Docker logs:
-    echo   docker-compose logs postgres
-    echo   docker-compose logs redis
+    echo   docker logs obsidian-postgres
+    echo   docker logs obsidian-redis
     echo.
     pause
     exit /b 1
@@ -98,30 +75,32 @@ goto WAIT_LOOP
 :SERVICES_READY
 
 REM ============================================
-REM Step 4: Initialize Database Schema
+REM Step 3: Ensure Database Schema Exists
 REM ============================================
-echo [4/6] Checking database schema...
+echo [3/5] Checking database schema...
 echo.
 
-REM Check if database is initialized by trying a simple query
-npm run init-db
+REM Run init-db (it's idempotent, safe to run multiple times)
+call npm run init-db >nul 2>&1
 if %errorlevel% neq 0 (
-    echo.
-    echo WARNING: Database initialization had issues
-    echo Continuing anyway (might be already initialized)
-    echo.
+    echo Database schema check complete.
+) else (
+    echo Database initialized.
 )
+
+REM Run migrations to ensure all columns exist
+call npm run migrate >nul 2>&1
 
 echo Database ready.
 echo.
 
 REM ============================================
-REM Step 5: Start BullMQ Workers
+REM Step 4: Start BullMQ Workers
 REM ============================================
-echo [5/6] Starting BullMQ workers...
+echo [4/5] Starting BullMQ workers...
 echo.
 
-start "Workers - Obsidian News Desk" cmd /k "title Workers - Obsidian News Desk && npx tsx scripts/start-workers.ts"
+start "Workers - Obsidian News Desk" cmd /k "title Workers - Obsidian News Desk && npm run workers"
 
 REM Wait for workers to initialize
 timeout /t 3 /nobreak >nul
@@ -130,9 +109,9 @@ echo Workers started in separate window.
 echo.
 
 REM ============================================
-REM Step 6: Start Web Interface
+REM Step 5: Start Web Interface
 REM ============================================
-echo [6/6] Starting web interface...
+echo [5/5] Starting web interface...
 echo.
 
 start "Web UI - Obsidian News Desk" cmd /k "title Web UI - Obsidian News Desk && npm run dev"

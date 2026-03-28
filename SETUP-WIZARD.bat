@@ -129,33 +129,86 @@ echo Creating .env file...
 copy /Y ".env.example" ".env" >nul
 
 echo.
-echo Please enter your API keys.
-echo Press ENTER to skip optional keys.
+echo ============================================
+echo   Select AI Provider for Script Analysis
+echo ============================================
+echo.
+echo   1. OpenAI (GPT-4) - Recommended
+echo   2. Google (Gemini)
+echo   3. Anthropic (Claude)
+echo   4. Groq (Fast inference)
+echo.
+choice /C 1234 /N /M "Choose provider (1-4): "
+
+set "AI_PROVIDER=openai"
+set "PROVIDER_NAME=OpenAI"
+set "KEY_PREFIX=sk-"
+
+if errorlevel 4 (
+    set "AI_PROVIDER=groq"
+    set "PROVIDER_NAME=Groq"
+    set "KEY_PREFIX=gsk_"
+)
+if errorlevel 3 (
+    set "AI_PROVIDER=anthropic"
+    set "PROVIDER_NAME=Anthropic"
+    set "KEY_PREFIX=sk-ant-"
+)
+if errorlevel 2 (
+    set "AI_PROVIDER=google"
+    set "PROVIDER_NAME=Google AI"
+    set "KEY_PREFIX=AIza"
+)
+if errorlevel 1 (
+    set "AI_PROVIDER=openai"
+    set "PROVIDER_NAME=OpenAI"
+    set "KEY_PREFIX=sk-"
+)
+
+echo.
+echo Selected: %PROVIDER_NAME%
 echo.
 
-REM OpenAI (required)
-set /p OPENAI_KEY="OpenAI API Key (REQUIRED): "
-if "%OPENAI_KEY%"=="" (
-    echo ❌ OpenAI API key is required!
+REM Primary AI Provider Key (required)
+echo Please enter your %PROVIDER_NAME% API key:
+echo (Should start with "%KEY_PREFIX%...")
+echo.
+set /p PRIMARY_KEY="%PROVIDER_NAME% API Key (REQUIRED): "
+if "%PRIMARY_KEY%"=="" (
+    echo ❌ %PROVIDER_NAME% API key is required!
     pause
     exit /b 1
 )
 
-REM Whisk (required)
+REM Whisk (required for image generation)
 echo.
-echo Whisk Token: Get from Chrome extension or manually:
+echo ============================================
+echo   Whisk API Token (Required for Images)
+echo ============================================
+echo.
+echo How to get Whisk token:
 echo 1. Visit https://labs.google.com/whisk
-echo 2. F12 -^> Network tab -^> Generate image
-echo 3. Find "generateImage" request -^> Copy Authorization token
+echo 2. Press F12 to open Developer Tools
+echo 3. Go to Network tab
+echo 4. Generate a test image
+echo 5. Find "generateImage" request
+echo 6. Copy Authorization header value: Bearer ya29...
 echo.
-set /p WHISK_TOKEN="Whisk API Token (REQUIRED): "
+set /p WHISK_TOKEN="Whisk API Token (paste full Bearer token): "
 if "%WHISK_TOKEN%"=="" (
     echo ❌ Whisk token is required!
     pause
     exit /b 1
 )
 
-REM Optional keys
+REM Strip "Bearer " prefix if user included it
+set "WHISK_TOKEN=%WHISK_TOKEN:Bearer =%"
+
+REM Optional: Additional provider keys
+echo.
+echo Optional: Configure additional AI providers (press ENTER to skip)
+echo.
+set /p OPENAI_KEY="OpenAI API Key (optional): "
 set /p ANTHROPIC_KEY="Anthropic API Key (optional): "
 set /p GOOGLE_KEY="Google AI API Key (optional): "
 set /p GROQ_KEY="Groq API Key (optional): "
@@ -163,11 +216,22 @@ set /p GROQ_KEY="Groq API Key (optional): "
 REM Write to .env
 (
 echo # API Keys - Configured by Setup Wizard
-echo OPENAI_API_KEY=%OPENAI_KEY%
+echo AI_PROVIDER=%AI_PROVIDER%
+echo.
+echo # Primary AI Provider
+if "%AI_PROVIDER%"=="openai" echo OPENAI_API_KEY=%PRIMARY_KEY%
+if "%AI_PROVIDER%"=="anthropic" echo ANTHROPIC_API_KEY=%PRIMARY_KEY%
+if "%AI_PROVIDER%"=="google" echo GOOGLE_AI_API_KEY=%PRIMARY_KEY%
+if "%AI_PROVIDER%"=="groq" echo GROQ_API_KEY=%PRIMARY_KEY%
+echo.
+echo # Additional AI Providers (optional)
+if not "%OPENAI_KEY%"=="" echo OPENAI_API_KEY=%OPENAI_KEY%
+if not "%ANTHROPIC_KEY%"=="" echo ANTHROPIC_API_KEY=%ANTHROPIC_KEY%
+if not "%GOOGLE_KEY%"=="" echo GOOGLE_AI_API_KEY=%GOOGLE_KEY%
+if not "%GROQ_KEY%"=="" echo GROQ_API_KEY=%GROQ_KEY%
+echo.
+echo # Image Generation
 echo WHISK_API_TOKEN=%WHISK_TOKEN%
-echo ANTHROPIC_API_KEY=%ANTHROPIC_KEY%
-echo GOOGLE_AI_API_KEY=%GOOGLE_KEY%
-echo GROQ_API_KEY=%GROQ_KEY%
 echo.
 echo # Database
 echo DATABASE_URL=postgresql://obsidian:obsidian_news_2024@localhost:5432/obsidian_news
@@ -185,6 +249,24 @@ echo NODE_ENV=production
 ) > .env
 
 echo ✅ Environment configured
+
+REM Validate configuration
+echo.
+echo ============================================
+echo   Validating Configuration
+echo ============================================
+echo.
+echo Running validation checks...
+call npm run setup
+if %errorlevel% neq 0 (
+    echo ❌ Configuration validation failed!
+    echo.
+    echo Please check your API keys and try again.
+    pause
+    exit /b 1
+)
+
+echo ✅ Configuration validated successfully
 
 :skip_env
 pause
@@ -276,6 +358,7 @@ echo    - Enable Developer Mode
 echo    - Load unpacked: chrome-extension\ folder
 echo    - Visit https://labs.google.com/whisk
 echo    - Generate test image to capture token
+echo    - Extension will auto-refresh every 50 minutes
 echo.
 echo 2. Start the system:
 echo    - Double-click START.bat

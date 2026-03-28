@@ -62,7 +62,7 @@ afterAll(async () => {
   try {
     const result = await pool.query(`
       DELETE FROM news_jobs
-      WHERE title LIKE 'Test%' OR title LIKE 'Bulk Test%'
+      WHERE raw_script LIKE '%test%' OR raw_script LIKE '%Test%'
     `);
     if (result.rowCount && result.rowCount > 0) {
       console.log(`✓ Cleaned up ${result.rowCount} orphaned test jobs`);

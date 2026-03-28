@@ -277,7 +277,15 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith(endpoint)
   );
 
-  if (!isPublicEndpoint) {
+  // Allow same-origin browser requests (no Bearer token needed from the UI)
+  const referer = req.headers.get('referer') || '';
+  const origin = req.headers.get('origin') || '';
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:8347';
+  const isBrowserRequest = referer.startsWith(appUrl) || origin.startsWith(appUrl) ||
+    req.headers.get('sec-fetch-site') === 'same-origin' ||
+    req.headers.get('sec-fetch-mode') === 'navigate';
+
+  if (!isPublicEndpoint && !isBrowserRequest) {
     const isAuthenticated = verifyAuthentication(req);
 
     if (!isAuthenticated) {

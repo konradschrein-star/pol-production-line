@@ -9,6 +9,12 @@ export interface WordTimestamp {
   confidence?: number;
 }
 
+export interface SceneSentenceInfo {
+  sceneOrder: number;
+  sentenceText: string;
+  narrativePosition: string;  // Used to detect hook vs body ('opening' = hook)
+}
+
 export interface SentenceGroup {
   text: string;
   words: WordTimestamp[];

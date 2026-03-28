@@ -20,7 +20,8 @@ export function getSecurityHeaders(isProduction: boolean = false): Record<string
     'Content-Security-Policy': [
       "default-src 'self'",
       "script-src 'self' 'unsafe-eval' 'unsafe-inline'", // Remotion needs eval, Next.js needs inline
-      "style-src 'self' 'unsafe-inline'", // TailwindCSS inline styles
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com", // TailwindCSS inline styles + Google Fonts
+      "font-src 'self' https://fonts.gstatic.com", // Google Fonts files
       "img-src 'self' data: blob: https://aisandbox-pa.googleapis.com", // Whisk images
       "media-src 'self' blob:", // Video playback
       "connect-src 'self' ws: wss:", // WebSocket for HMR

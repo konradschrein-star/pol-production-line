@@ -365,6 +365,7 @@ async function checkRedis(): Promise<CheckResult> {
     const envContent = fs.readFileSync(envPath, 'utf8');
     const redisHostMatch = envContent.match(/^REDIS_HOST=(.*)$/m);
     const redisPortMatch = envContent.match(/^REDIS_PORT=(.*)$/m);
+    const redisPasswordMatch = envContent.match(/^REDIS_PASSWORD=(.*)$/m);
 
     if (!redisHostMatch || !redisPortMatch) {
       return {
@@ -375,10 +376,11 @@ async function checkRedis(): Promise<CheckResult> {
 
     const host = redisHostMatch[1].trim();
     const port = parseInt(redisPortMatch[1].trim(), 10);
+    const password = redisPasswordMatch ? redisPasswordMatch[1].trim() : undefined;
 
     // Try to import ioredis and test connection
     const { default: Redis } = await import('ioredis');
-    const redis = new Redis({ host, port, lazyConnect: true });
+    const redis = new Redis({ host, port, password, lazyConnect: true });
 
     await redis.connect();
     await redis.ping();

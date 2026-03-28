@@ -14,6 +14,11 @@ export interface RenderJobData {
     image_url: string;
     ticker_headline: string;
     scene_order: number;
+    sentence_text: string | null;         // Exact sentence this scene visualizes
+    narrative_position: string | null;    // 'opening', 'development', etc.
+    shot_type: string | null;             // For logging/debugging
+    word_start_time: number | null;       // NEW: Start time from database (stored after avatar upload)
+    word_end_time: number | null;         // NEW: End time from database (stored after avatar upload)
   }>;
   wordTimestamps?: WordTimestamp[];
   onProgress?: (info: { renderedFrames: number; totalFrames: number; progress: number }) => void;

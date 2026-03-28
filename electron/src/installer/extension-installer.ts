@@ -4,6 +4,9 @@
  * Programmatic utilities for managing the Whisk Token Manager Chrome extension
  * during the Obsidian News Desk installation and setup process.
  *
+ * The extension auto-refreshes Whisk API tokens every 50 minutes and stores them
+ * for the main application to read. This eliminates manual token refresh.
+ *
  * Part of Phase 2, Task 2.3: Chrome Extension Packaging
  */
 

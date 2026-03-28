@@ -6,7 +6,8 @@
  * - Body (30-100%): 1 image per 1-2 sentences (slower, natural pacing)
  */
 
-import { WordTimestamp, SentenceGroup, groupIntoSentences } from './types';
+import { WordTimestamp, SentenceGroup, groupIntoSentences, SceneSentenceInfo } from './types';
+import { findWordsForSentence } from '../transcription/sentence-matcher';
 
 export interface SceneTiming {
   sceneId: string;
@@ -21,11 +22,6 @@ export interface PacingResult {
   sceneTiming: SceneTiming[];
   hookScenes: number;
   bodyScenes: number;
-}
-
-export interface SceneSentenceInfo {
-  sceneOrder: number;
-  sentenceText: string;
 }
 
 export interface TranscriptPacingInput {
@@ -239,6 +235,20 @@ export function calculateTranscriptBasedPacing(
     console.warn(`⚠️  [Pacing] No word timestamps, falling back to time-based pacing`);
     return calculateScenePacing(avatarDurationSeconds, sceneCount, fps);
   }
+
+  // CRITICAL: If sceneSentences provided, use database-driven matching
+  if (sceneSentences && sceneSentences.length > 0) {
+    console.log(`🎯 [Pacing] Using DATABASE-DRIVEN pacing (${sceneSentences.length} explicit sentence mappings)`);
+    return calculateDatabaseDrivenPacing({
+      avatarDurationSeconds,
+      wordTimestamps,
+      sceneSentences,
+      fps
+    });
+  }
+
+  // FALLBACK: Original punctuation-based detection
+  console.log(`📐 [Pacing] Using PUNCTUATION-BASED pacing (fallback mode)`);
 
   // Phase boundaries
   const hookEndTime = Math.min(30, avatarDurationSeconds); // First 30 seconds OR full video if shorter
@@ -503,6 +513,189 @@ export function calculateTranscriptBasedPacing(
 }
 
 // Note: getVideoDuration() moved to video-utils.ts (server-side only)
+
+/**
+ * DATABASE-DRIVEN PACING
+ * Uses explicit scene-to-sentence mapping from database analysis phase
+ * This prevents drift by using the same sentence boundaries throughout the pipeline
+ */
+
+function calculateDatabaseDrivenPacing(input: {
+  avatarDurationSeconds: number;
+  wordTimestamps: WordTimestamp[];
+  sceneSentences: SceneSentenceInfo[];
+  fps: number;
+}): PacingResult {
+  const { avatarDurationSeconds, wordTimestamps, sceneSentences, fps } = input;
+
+  console.log(`\n🎯 [Database-Driven Pacing] Starting...`);
+  console.log(`   Avatar duration: ${avatarDurationSeconds}s`);
+  console.log(`   Total scenes: ${sceneSentences.length}`);
+  console.log(`   Word timestamps: ${wordTimestamps.length}`);
+
+  const sceneTiming: SceneTiming[] = [];
+  const totalFrames = Math.round(avatarDurationSeconds * fps);
+
+  // STEP 1: Separate hook and body scenes using narrative_position
+  const hookScenes = sceneSentences.filter(s => s.narrativePosition === 'opening');
+  const bodyScenes = sceneSentences.filter(s => s.narrativePosition !== 'opening');
+
+  console.log(`   Hook scenes (narrative_position='opening'): ${hookScenes.length}`);
+  console.log(`   Body scenes (other positions): ${bodyScenes.length}`);
+
+  // STEP 2: For each scene, find matching words in transcript
+  let successfulMatches = 0;
+
+  for (const scene of sceneSentences) {
+    const matchedWords = findWordsForSentence(scene.sentenceText, wordTimestamps);
+
+    if (matchedWords.length === 0) {
+      console.warn(`⚠️  Scene ${scene.sceneOrder}: No words matched for sentence "${scene.sentenceText.substring(0, 50)}..."`);
+      // Will be handled in validation/fallback
+      continue;
+    }
+
+    // Calculate timing from matched words
+    const startTime = matchedWords[0].start;
+    const endTime = matchedWords[matchedWords.length - 1].end;
+    const duration = endTime - startTime;
+
+    sceneTiming.push({
+      sceneId: `scene_${scene.sceneOrder}`,
+      startFrame: Math.round(startTime * fps),
+      durationInFrames: Math.round(duration * fps),
+      durationInSeconds: duration
+    });
+
+    successfulMatches++;
+
+    console.log(`   Scene ${scene.sceneOrder}: ${startTime.toFixed(2)}s - ${endTime.toFixed(2)}s (${duration.toFixed(2)}s) - "${scene.sentenceText.substring(0, 40)}..."`);
+  }
+
+  // STEP 3: Validate coverage
+  const totalAssignedDuration = sceneTiming.reduce((sum, t) => sum + t.durationInSeconds, 0);
+  const coveragePercent = (totalAssignedDuration / avatarDurationSeconds) * 100;
+
+  console.log(`\n📊 [Validation] Coverage: ${totalAssignedDuration.toFixed(1)}s / ${avatarDurationSeconds}s (${coveragePercent.toFixed(1)}%)`);
+  console.log(`   Successful matches: ${successfulMatches} / ${sceneSentences.length}`);
+
+  // Check if too many scenes failed to match
+  if (successfulMatches < sceneSentences.length * 0.5) {
+    console.error(`❌ [Pacing] Too many scenes failed to match (${successfulMatches}/${sceneSentences.length})`);
+    console.warn(`   Falling back to punctuation-based pacing`);
+
+    // Recursive call to original algorithm (without sceneSentences)
+    return calculateTranscriptBasedPacing({
+      avatarDurationSeconds: input.avatarDurationSeconds,
+      wordTimestamps: input.wordTimestamps,
+      sceneCount: sceneSentences.length,
+      sceneSentences: undefined,  // Force fallback
+      fps: input.fps
+    });
+  }
+
+  // STEP 4: Sort by scene order to ensure correct sequence
+  sceneTiming.sort((a, b) => {
+    const aOrder = parseInt(a.sceneId.split('_')[1]);
+    const bOrder = parseInt(b.sceneId.split('_')[1]);
+    return aOrder - bOrder;
+  });
+
+  // STEP 5: Adjust for gaps/overlaps
+  if (coveragePercent < 95 || coveragePercent > 105) {
+    console.warn(`⚠️  Coverage outside tolerance (95-105%), applying corrections...`);
+    adjustSceneTiming(sceneTiming, totalFrames, fps);
+  }
+
+  // STEP 6: Ensure continuous coverage
+  ensureContinuousCoverage(sceneTiming, totalFrames, fps);
+
+  return {
+    totalDurationInFrames: totalFrames,
+    totalDurationInSeconds: avatarDurationSeconds,
+    sceneTiming,
+    hookScenes: hookScenes.length,
+    bodyScenes: bodyScenes.length
+  };
+}
+
+/**
+ * Adjust scene timings to fill total duration exactly
+ * Used when word matching leaves gaps or causes overlaps
+ */
+function adjustSceneTiming(
+  sceneTiming: SceneTiming[],
+  totalFrames: number,
+  fps: number
+): void {
+  if (sceneTiming.length === 0) return;
+
+  // Calculate total assigned frames
+  const totalAssignedFrames = sceneTiming.reduce((sum, t) => sum + t.durationInFrames, 0);
+  const frameDeficit = totalFrames - totalAssignedFrames;
+
+  console.log(`   Adjusting scenes: ${frameDeficit > 0 ? 'adding' : 'removing'} ${Math.abs(frameDeficit)} frames`);
+
+  if (frameDeficit === 0) return;
+
+  // Distribute deficit proportionally across all scenes
+  const framesPerScene = frameDeficit / sceneTiming.length;
+
+  for (let i = 0; i < sceneTiming.length; i++) {
+    const adjustment = Math.round(framesPerScene);
+    sceneTiming[i].durationInFrames += adjustment;
+    sceneTiming[i].durationInSeconds = sceneTiming[i].durationInFrames / fps;
+  }
+
+  // Fix rounding error on last scene
+  const finalTotal = sceneTiming.reduce((sum, t) => sum + t.durationInFrames, 0);
+  const finalError = totalFrames - finalTotal;
+  if (finalError !== 0) {
+    sceneTiming[sceneTiming.length - 1].durationInFrames += finalError;
+    sceneTiming[sceneTiming.length - 1].durationInSeconds =
+      sceneTiming[sceneTiming.length - 1].durationInFrames / fps;
+  }
+
+  // Recalculate start frames
+  let currentFrame = 0;
+  for (const timing of sceneTiming) {
+    timing.startFrame = currentFrame;
+    currentFrame += timing.durationInFrames;
+  }
+}
+
+/**
+ * Ensure scenes cover exactly 0 to totalFrames with no gaps
+ */
+function ensureContinuousCoverage(
+  sceneTiming: SceneTiming[],
+  totalFrames: number,
+  fps: number
+): void {
+  if (sceneTiming.length === 0) return;
+
+  // Reset start frames to ensure continuous coverage
+  let currentFrame = 0;
+  for (let i = 0; i < sceneTiming.length; i++) {
+    sceneTiming[i].startFrame = currentFrame;
+    currentFrame += sceneTiming[i].durationInFrames;
+  }
+
+  // CRITICAL: Last scene must end exactly at totalFrames
+  const lastScene = sceneTiming[sceneTiming.length - 1];
+  const lastSceneEnd = lastScene.startFrame + lastScene.durationInFrames;
+
+  if (lastSceneEnd !== totalFrames) {
+    console.log(`   Adjusting last scene to fill exactly (${lastSceneEnd} → ${totalFrames})`);
+    lastScene.durationInFrames = totalFrames - lastScene.startFrame;
+    lastScene.durationInSeconds = lastScene.durationInFrames / fps;
+  }
+
+  // Validate
+  console.log(`\n✅ [Coverage Validated]`);
+  console.log(`   First scene starts at frame 0: ${sceneTiming[0].startFrame === 0}`);
+  console.log(`   Last scene ends at frame ${totalFrames}: ${(lastScene.startFrame + lastScene.durationInFrames) === totalFrames}`);
+}
 
 /**
  * Example usage and test cases

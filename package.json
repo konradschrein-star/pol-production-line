@@ -42,7 +42,7 @@
     "test:dependencies": "vitest run tests/integration/installer-validation.test.ts -t 'Bundled Dependencies'",
     "test:config": "vitest run tests/integration/installer-validation.test.ts -t 'Configuration System'",
     "test:e2e": "vitest run tests/integration/installer-validation.test.ts -t 'End-to-End'",
-    "test:installer": "tsx scripts/run-installer-tests.ts",
+    "test:installer": "tsx scripts/test-installer.ts",
     "test:quick": "tsx scripts/test-ffmpeg.ts && tsx scripts/test-node-resolver.ts",
     "test:installer:no-cleanup": "set TEST_KEEP_ARTIFACTS=true&& tsx scripts/run-installer-tests.ts",
     "validate:python": "tsx scripts/validate-python.ts",

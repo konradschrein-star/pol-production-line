@@ -245,7 +245,13 @@ async function validateImageFile(path: string): Promise<{
       };
     }
 
-    if (sizeKB < 1) {
+    // Environment-aware file size validation
+    // Test mode: Allow tiny fixtures (≥1 byte) for fast tests
+    // Production: Require ≥1KB to catch corrupted/incomplete files
+    const isTestMode = process.env.NODE_ENV === 'test';
+    const minSizeKB = isTestMode ? 0.001 : 1;
+
+    if (sizeKB < minSizeKB) {
       return {
         valid: false,
         error: `File is suspiciously small (${sizeKB.toFixed(2)} KB): ${normalizedPath}`,

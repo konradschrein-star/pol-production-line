@@ -24,13 +24,16 @@ export const handlers = [
       return HttpResponse.json({ error: 'Content policy violation' }, { status: 400 });
     }
 
-    // Success response
+    // Success response - matches real Whisk API format
     return HttpResponse.json({
-      images: [
+      imagePanels: [
         {
-          imageUrl: 'https://storage.googleapis.com/mock-bucket/image-123.jpg',
-          width: 1024,
-          height: 1024,
+          generatedImages: [
+            {
+              imageUrl: 'https://storage.googleapis.com/mock-bucket/image-123.jpg',
+              encodedImage: '', // Empty or base64 data
+            },
+          ],
         },
       ],
     });

@@ -4,6 +4,7 @@ import { saveBuffer } from '@/lib/storage/local';
 import { queueRender } from '@/lib/queue/queues';
 import { ErrorCode, createErrorResponse, logError } from '@/lib/errors/error-codes';
 import { transcribeAudio } from '@/lib/audio/transcribe';
+import { findWordsForSentence } from '@/lib/transcription/sentence-matcher';
 import { jobIdParamsSchema, validateParams, formatValidationErrors } from '@/lib/validation/schemas';
 import { sanitizeError, getErrorStatusCode } from '@/lib/errors/safe-errors';
 import { z } from 'zod';
@@ -219,6 +220,60 @@ export async function POST(
 
       console.log(`✅ [API] Transcription complete: ${transcription.words.length} words`);
       console.log(`   Text preview: ${transcription.text.substring(0, 100)}...`);
+
+      // NEW: Match scenes to transcript and store timing
+      console.log(`🎯 [API] Matching scenes to transcript for database-driven pacing...`);
+
+      // Fetch all scenes for this job
+      const scenesResult = await db.query(
+        `SELECT id, scene_order, sentence_text
+         FROM news_scenes
+         WHERE job_id = $1
+         ORDER BY scene_order`,
+        [id]
+      );
+
+      const scenes = scenesResult.rows;
+      let successfulMatches = 0;
+      let failedMatches = 0;
+
+      // Match each scene to transcript words
+      for (const scene of scenes) {
+        if (!scene.sentence_text) {
+          console.warn(`⚠️  Scene ${scene.scene_order}: No sentence_text, skipping timing`);
+          failedMatches++;
+          continue;
+        }
+
+        // Find matching words for this scene's sentence
+        const matchedWords = findWordsForSentence(scene.sentence_text, transcription.words);
+
+        if (matchedWords.length === 0) {
+          console.warn(`⚠️  Scene ${scene.scene_order}: No words matched for "${scene.sentence_text.substring(0, 50)}..."`);
+          failedMatches++;
+          continue;
+        }
+
+        // Store timing in database
+        const wordStartTime = matchedWords[0].start;
+        const wordEndTime = matchedWords[matchedWords.length - 1].end;
+
+        await db.query(
+          `UPDATE news_scenes
+           SET word_start_time = $1, word_end_time = $2
+           WHERE id = $3`,
+          [wordStartTime, wordEndTime, scene.id]
+        );
+
+        successfulMatches++;
+        console.log(`   Scene ${scene.scene_order}: ${wordStartTime.toFixed(2)}s - ${wordEndTime.toFixed(2)}s (${(wordEndTime - wordStartTime).toFixed(2)}s)`);
+      }
+
+      console.log(`✅ [API] Scene timing stored: ${successfulMatches}/${scenes.length} scenes matched`);
+
+      if (failedMatches > 0) {
+        console.warn(`⚠️  [API] ${failedMatches} scenes failed to match - will use fallback pacing`);
+      }
 
       // Update job with avatar path and set status to rendering
       await db.query(

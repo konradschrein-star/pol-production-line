@@ -48,14 +48,12 @@ extraResources:
   - from: "scripts/optimize-avatar.sh"
     to: "scripts/optimize-avatar.sh"
 
-  # Chrome extension
+  # Chrome extension for Whisk token auto-refresh
   - from: "chrome-extension"
     to: "chrome-extension"
     filter:
       - "**/*"
       - "!**/node_modules/**"
-  - from: "CHROME_EXTENSION_SETUP.md"
-    to: "CHROME_EXTENSION_SETUP.md"
 
   # Portable launcher script
   - from: "launcher.bat"

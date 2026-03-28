@@ -7,7 +7,8 @@ import { renderNewsVideo } from '../../remotion/render';
 import { saveFile, resolveFilePath } from '../../storage/local';
 import { unlinkSync } from 'fs';
 import { transcribeFile } from '../../transcription/whisper';
-import { WordTimestamp } from '../../remotion/types';
+import { WordTimestamp, SceneSentenceInfo } from '../../remotion/types';
+import { ensureContinuousCoverageSimple } from '../../transcription/sentence-matcher';
 import { prepareRenderAssets } from '../../remotion/asset-preparation';
 import { validateSceneQuality } from '../../video/quality-check';
 
@@ -47,9 +48,11 @@ export const renderWorker = new Worker<RenderJobData>(
         throw new Error('Avatar MP4 path not found. Upload avatar first.');
       }
 
-      // 2. Fetch scenes
+      // 2. Fetch scenes (with timing data for database-driven pacing)
       const scenesResult = await db.query(
-        `SELECT id, image_url, ticker_headline, scene_order
+        `SELECT id, image_url, ticker_headline, scene_order,
+                sentence_text, narrative_position, shot_type,
+                word_start_time, word_end_time
          FROM news_scenes
          WHERE job_id = $1
          ORDER BY scene_order`,
@@ -96,7 +99,27 @@ export const renderWorker = new Worker<RenderJobData>(
 
       console.log(`✅ [RENDER] All assets validated and prepared for rendering`);
 
-      // 3. Prepare word timestamps for transcription (if available)
+      // 3. Check if we have stored timing data (preferred method)
+      const hasStoredTiming = scenes.every(s => s.word_start_time !== null && s.word_end_time !== null);
+
+      if (hasStoredTiming) {
+        console.log(`✅ [RENDER] All scenes have stored timing from database (fast path)`);
+      } else {
+        const scenesWithTiming = scenes.filter(s => s.word_start_time !== null && s.word_end_time !== null).length;
+        console.warn(`⚠️  [RENDER] Only ${scenesWithTiming}/${scenes.length} scenes have stored timing`);
+        console.warn(`   Will use fallback: fuzzy matching or time-based pacing`);
+      }
+
+      // Build explicit scene-to-sentence mapping for fallback pacing
+      const sceneSentences = scenes.every(s => s.sentence_text)
+        ? scenes.map(s => ({
+            sceneOrder: s.scene_order,
+            sentenceText: s.sentence_text!,
+            narrativePosition: s.narrative_position || 'development'
+          }))
+        : undefined;
+
+      // 4. Prepare word timestamps for transcription (if available)
       let wordTimestamps: WordTimestamp[] | undefined = word_timestamps ? JSON.parse(JSON.stringify(word_timestamps)) : undefined;
 
       // QUALITY CHECK: Validate scene timing and coverage BEFORE rendering
@@ -111,15 +134,72 @@ export const renderWorker = new Worker<RenderJobData>(
       const avatarDurationSeconds = await getVideoDuration(avatar_mp4_url);
       console.log(`   Avatar duration: ${avatarDurationSeconds.toFixed(2)}s`);
 
-      // Calculate pacing (same logic as NewsVideo component)
-      const pacing = wordTimestamps && wordTimestamps.length > 0
-        ? calculateTranscriptBasedPacing({
-            avatarDurationSeconds,
-            wordTimestamps,
-            sceneCount: scenes.length,
-            fps: 30,
-          })
-        : calculateScenePacing(avatarDurationSeconds, scenes.length, 30);
+      // Calculate pacing: Use stored timing if available, otherwise fallback to pacing algorithm
+      let pacing;
+
+      if (hasStoredTiming) {
+        // FAST PATH: Use stored timing from database (no matching needed!)
+        console.log(`🚀 [RENDER] Using stored timing from database (O(1) lookup)`);
+
+        const sceneTiming = scenes.map((scene, i) => ({
+          sceneId: `scene_${i}`,
+          startFrame: Math.round(scene.word_start_time! * 30),
+          durationInFrames: Math.round((scene.word_end_time! - scene.word_start_time!) * 30),
+          durationInSeconds: scene.word_end_time! - scene.word_start_time!
+        }));
+
+        // Count hook/body scenes
+        const hookScenes = scenes.filter(s => s.narrative_position === 'opening').length;
+
+        // Ensure continuous coverage (adjust for rounding errors)
+        const totalFrames = Math.round(avatarDurationSeconds * 30);
+        ensureContinuousCoverageSimple(sceneTiming, totalFrames);
+
+        pacing = {
+          totalDurationInFrames: totalFrames,
+          totalDurationInSeconds: avatarDurationSeconds,
+          sceneTiming,
+          hookScenes,
+          bodyScenes: scenes.length - hookScenes
+        };
+
+        console.log(`✅ [RENDER] Timing loaded from database: ${sceneTiming.length} scenes`);
+      } else {
+        // FALLBACK: Use pacing algorithm (fuzzy matching or time-based)
+        console.log(`⚠️  [RENDER] Falling back to pacing algorithm`);
+
+        pacing = wordTimestamps && wordTimestamps.length > 0
+          ? calculateTranscriptBasedPacing({
+              avatarDurationSeconds,
+              wordTimestamps,
+              sceneCount: scenes.length,
+              sceneSentences,  // Pass database sentence mapping for fuzzy matching
+              fps: 30,
+            })
+          : calculateScenePacing(avatarDurationSeconds, scenes.length, 30);
+      }
+
+      // VALIDATION: Ensure pacing matches scene count
+      if (pacing.sceneTiming.length !== scenes.length) {
+        throw new Error(
+          `Pacing mismatch: ${pacing.sceneTiming.length} timings for ${scenes.length} scenes. ` +
+          `This indicates a critical error in the pacing algorithm.`
+        );
+      }
+
+      // VALIDATION: Ensure all scenes have valid durations
+      const invalidTimings = pacing.sceneTiming.filter(t => t.durationInFrames <= 0);
+      if (invalidTimings.length > 0) {
+        throw new Error(
+          `${invalidTimings.length} scenes have invalid duration (≤0 frames). ` +
+          `Scene IDs: ${invalidTimings.map(t => t.sceneId).join(', ')}`
+        );
+      }
+
+      console.log(`✅ [RENDER] Pacing validation passed`);
+      console.log(`   Hook scenes: ${pacing.hookScenes}`);
+      console.log(`   Body scenes: ${pacing.bodyScenes}`);
+      console.log(`   Total duration: ${pacing.totalDurationInSeconds.toFixed(2)}s (${pacing.totalDurationInFrames} frames)`);
 
       // Run quality checks
       const qualityCheck = validateSceneQuality(scenes, pacing.sceneTiming, pacing.totalDurationInFrames, 30);
