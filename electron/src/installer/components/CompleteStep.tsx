@@ -17,10 +17,22 @@ export interface CompleteStepProps {
  */
 export function CompleteStep({ wizardData, onLaunch }: CompleteStepProps) {
   const [isLaunching, setIsLaunching] = React.useState(false);
+  const [autoStart, setAutoStart] = React.useState(false);
+  const [startMinimized, setStartMinimized] = React.useState(false);
 
   const handleLaunch = async () => {
     setIsLaunching(true);
     try {
+      // Enable auto-start if user opted in
+      if (autoStart && (window as any).electronAPI) {
+        try {
+          await (window as any).electronAPI.autoStart.enable(startMinimized);
+        } catch (err) {
+          console.error('Failed to enable auto-start:', err);
+          // Don't block launch if auto-start fails
+        }
+      }
+
       await onLaunch();
     } catch (error) {
       console.error('Launch error:', error);
@@ -83,6 +95,39 @@ export function CompleteStep({ wizardData, onLaunch }: CompleteStepProps) {
         <p className="text-sm text-blue-200">
           💡 <strong>Tip:</strong> The application will start automatically in your default browser.
           You can access it anytime at <span className="font-mono">http://localhost:8347</span>
+        </p>
+      </div>
+
+      {/* Auto-Start Configuration (Phase 5) */}
+      <div className="space-y-3 rounded-lg border border-gray-700 bg-gray-800/50 p-4">
+        <label className="flex items-center space-x-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoStart}
+            onChange={(e) => setAutoStart(e.target.checked)}
+            className="h-5 w-5 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-2 focus:ring-green-500 focus:ring-offset-0"
+          />
+          <span className="text-sm font-medium text-gray-200">
+            Start Obsidian News Desk when Windows starts
+          </span>
+        </label>
+
+        {autoStart && (
+          <label className="flex items-center space-x-3 cursor-pointer pl-8">
+            <input
+              type="checkbox"
+              checked={startMinimized}
+              onChange={(e) => setStartMinimized(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-600 bg-gray-700 text-green-600 focus:ring-2 focus:ring-green-500 focus:ring-offset-0"
+            />
+            <span className="text-sm text-gray-300">
+              Start minimized to system tray
+            </span>
+          </label>
+        )}
+
+        <p className="text-xs text-gray-500">
+          You can change this later in Settings → Startup
         </p>
       </div>
 

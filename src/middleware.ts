@@ -1,17 +1,19 @@
 /**
  * Next.js Middleware - Authentication, Rate Limiting & Security
  *
- * PRODUCTION HARDENING Phase 2:
+ * PRODUCTION HARDENING Phase 2 & 8:
  * - API key authentication for all API endpoints
  * - In-memory rate limiting per IP + endpoint
  * - Automatic cleanup of expired rate limit records
  * - Configurable limits per endpoint pattern
+ * - Security headers (CSP, X-Frame-Options, HSTS, etc.)
  *
  * @see https://nextjs.org/docs/app/building-your-application/routing/middleware
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
+import { getSecurityHeaders } from './lib/security/headers';
 
 // ===== AUTHENTICATION CONFIGURATION =====
 
@@ -196,6 +198,13 @@ function checkRateLimit(ip: string, pattern: string): boolean {
   if (!config) return true; // No limit configured
 
   const now = Date.now();
+
+  // Probabilistic cleanup: 1% chance per request
+  // Avoids setInterval dependency, works in serverless environments
+  if (Math.random() < 0.01) {
+    cleanupExpiredRecords();
+  }
+
   const key = `${ip}:${pattern}`;
   const record = rateLimitMap.get(key);
 
@@ -240,19 +249,26 @@ function cleanupExpiredRecords(): void {
   }
 }
 
-// Run cleanup every 5 minutes
-if (typeof setInterval !== 'undefined') {
-  setInterval(cleanupExpiredRecords, 5 * 60 * 1000);
-}
+// Note: Cleanup now runs probabilistically inside checkRateLimit()
+// to work in both long-lived and serverless environments
 
 // ===== MIDDLEWARE HANDLER =====
 
 export async function middleware(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
 
+  // Apply security headers to all responses
+  const isProduction = process.env.NODE_ENV === 'production';
+  const securityHeaders = getSecurityHeaders(isProduction);
+
   // Skip authentication and rate limiting for non-API routes
   if (!pathname.startsWith('/api/')) {
-    return NextResponse.next();
+    const response = NextResponse.next();
+    // Apply security headers to non-API routes too
+    for (const [key, value] of Object.entries(securityHeaders)) {
+      response.headers.set(key, value);
+    }
+    return response;
   }
 
   // ===== AUTHENTICATION CHECK =====
@@ -267,7 +283,7 @@ export async function middleware(req: NextRequest) {
     if (!isAuthenticated) {
       console.warn(`[AUTH] Unauthorized request to ${pathname} from ${req.ip || 'unknown'}`);
 
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           error: 'Unauthorized',
           message: 'Valid API key required. Include Authorization: Bearer <API_KEY> header.',
@@ -279,11 +295,26 @@ export async function middleware(req: NextRequest) {
           },
         }
       );
+
+      // Apply security headers to error responses
+      for (const [key, value] of Object.entries(securityHeaders)) {
+        response.headers.set(key, value);
+      }
+
+      return response;
     }
   }
 
   // ===== RATE LIMITING =====
   // Get client IP (supports various proxy headers)
+  //
+  // ⚠️ SECURITY WARNING: Only trust x-forwarded-for/x-real-ip if behind a trusted
+  // reverse proxy (nginx, cloudflare, etc.) that OVERWRITES these headers. Otherwise,
+  // clients can spoof IP addresses to bypass rate limiting and IP whitelists.
+  //
+  // For localhost-only deployment (Obsidian News Desk default), this is not a security
+  // risk since all traffic is from 127.0.0.1. For internet-facing deployments, configure
+  // TRUST_PROXY=true in .env and validate proxy chain.
   const ip =
     req.ip ||
     req.headers.get('x-forwarded-for')?.split(',')[0] ||
@@ -299,7 +330,7 @@ export async function middleware(req: NextRequest) {
     if (!allowed) {
       console.warn(`[RATE LIMIT] Blocked request from ${ip} to ${pathname}`);
 
-      return NextResponse.json(
+      const response = NextResponse.json(
         {
           error: 'Rate limit exceeded',
           message: 'Too many requests. Please try again later.',
@@ -312,10 +343,23 @@ export async function middleware(req: NextRequest) {
           },
         }
       );
+
+      // Apply security headers to rate limit responses
+      for (const [key, value] of Object.entries(securityHeaders)) {
+        response.headers.set(key, value);
+      }
+
+      return response;
     }
   }
 
-  return NextResponse.next();
+  // Apply security headers to successful API responses
+  const response = NextResponse.next();
+  for (const [key, value] of Object.entries(securityHeaders)) {
+    response.headers.set(key, value);
+  }
+
+  return response;
 }
 
 /**

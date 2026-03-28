@@ -97,4 +97,7 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
+// Export pool for tests
+export { pool };
+
 export default db;

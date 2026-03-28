@@ -1,0 +1,23 @@
+/**
+ * React Testing Setup File
+ *
+ * Configures React Testing Library + MSW (Mock Service Worker)
+ * for component and integration tests
+ */
+
+import '@testing-library/jest-dom';
+import { cleanup } from '@testing-library/react';
+import { afterEach, beforeAll, afterAll } from 'vitest';
+import { server } from './mocks/server';
+
+// Establish API mocking before all tests
+beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+
+// Reset handlers after each test
+afterEach(() => {
+  server.resetHandlers();
+  cleanup();
+});
+
+// Clean up after all tests
+afterAll(() => server.close());

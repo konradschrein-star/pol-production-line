@@ -10,6 +10,8 @@ import * as validator from './config/validator';
 import { ServiceManager, StartupProgress } from './services/manager';
 import { TrayManager } from './tray';
 import { initAutoUpdater, checkForUpdates } from './updater';
+import { autoStartManager, AutoStartManager } from './auto-start';
+import { autoUpdater } from 'electron-updater';
 import logger from './logger';
 
 let mainWindow: BrowserWindow | null = null;
@@ -147,9 +149,13 @@ function createMainWindow() {
     mainWindow.webContents.openDevTools();
   }
 
-  // Show window when ready
+  // Show window when ready (unless --minimized flag is present)
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
+    if (!AutoStartManager.shouldStartMinimized()) {
+      mainWindow?.show();
+    } else {
+      logger.info('Starting minimized to tray (--minimized flag detected)', 'main');
+    }
   });
 
   // Minimize to tray instead of closing
@@ -475,6 +481,114 @@ ipcMain.handle('workers:getStatus', async () => {
     return status.workers;
   }
   return { running: false };
+});
+
+// ============================================================
+// Auto-Start Handlers (Phase 5)
+// ============================================================
+
+ipcMain.handle('auto-start:toggle', async (event, enabled: boolean, minimized: boolean = false) => {
+  try {
+    const result = await autoStartManager.toggle(enabled, minimized);
+    return { success: true, enabled: result };
+  } catch (err: any) {
+    logger.error('Failed to toggle auto-start', 'ipc', { error: err.message });
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('auto-start:getStatus', async () => {
+  try {
+    const enabled = await autoStartManager.isEnabled();
+    return { success: true, enabled };
+  } catch (err: any) {
+    logger.error('Failed to get auto-start status', 'ipc', { error: err.message });
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('auto-start:enable', async (event, minimized: boolean = false) => {
+  try {
+    await autoStartManager.enable({ enabled: true, minimized });
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// ============================================================
+// Update Handlers (Phase 6)
+// ============================================================
+
+ipcMain.handle('update:check', async () => {
+  try {
+    await checkForUpdates();
+    return { success: true };
+  } catch (err: any) {
+    logger.error('Failed to check for updates', 'ipc', { error: err.message });
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('update:download', async () => {
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (err: any) {
+    logger.error('Update download failed', 'ipc', { error: err.message });
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.handle('update:install', () => {
+  // Quit and install update (restart app)
+  autoUpdater.quitAndInstall(
+    false,  // Don't force quit (allow graceful shutdown)
+    true    // Restart after install
+  );
+});
+
+ipcMain.handle('update:getStatus', async () => {
+  try {
+    return {
+      success: true,
+      currentVersion: app.getVersion(),
+    };
+  } catch (err: any) {
+    return { success: false, error: err.message };
+  }
+});
+
+// Forward autoUpdater events to renderer process
+autoUpdater.on('update-available', (info) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update:available', info);
+  }
+});
+
+autoUpdater.on('update-not-available', () => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update:not-available');
+  }
+});
+
+autoUpdater.on('download-progress', (progress) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update:progress', progress);
+  }
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update:downloaded', info);
+  }
+});
+
+autoUpdater.on('error', (err) => {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('update:error', err.message);
+  }
+  logger.error('Auto-updater error', 'updater', { error: err });
 });
 
 // ============================================================

@@ -2,11 +2,19 @@
  * GET /api/settings - Read current environment variables
  * POST /api/settings - Update environment variables
  * WARNING: This writes to .env file - only use in local development
+ *
+ * Phase 8 Security Enhancements:
+ * - IP whitelist (localhost only)
+ * - Timing-safe admin key comparison
+ * - Audit logging for all access attempts
+ * - Stricter rate limiting (5/min) via middleware
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { writeFile, readFile } from 'fs/promises';
 import { join } from 'path';
+import crypto from 'crypto';
+import { logAdminAccess } from '@/lib/security/audit-logger';
 
 /**
  * GET - Load current settings from .env file
@@ -97,14 +105,61 @@ function maskApiKey(key: string): string {
  */
 export async function POST(req: NextRequest) {
   try {
-    // Verify admin authentication
-    const authHeader = req.headers.get('authorization');
-    const expectedAuth = `Bearer ${process.env.ADMIN_API_KEY}`;
+    // Get IP address
+    const ip =
+      req.ip ||
+      req.headers.get('x-forwarded-for')?.split(',')[0] ||
+      req.headers.get('x-real-ip') ||
+      'unknown';
 
-    if (!authHeader || authHeader !== expectedAuth) {
-      console.warn('⚠️ [SETTINGS] Unauthorized settings update attempt');
+    // 1. IP whitelist check (localhost-only deployment)
+    if (ip !== '127.0.0.1' && ip !== '::1' && ip !== 'localhost') {
+      console.warn(`⚠️ [SETTINGS] Access denied from non-localhost IP: ${ip}`);
+      await logAdminAccess(ip, false, { reason: 'IP not whitelisted' });
+
       return NextResponse.json(
-        { error: 'Unauthorized - Admin API key required' },
+        { error: 'Forbidden', message: 'Admin endpoint only accessible from localhost' },
+        { status: 403 }
+      );
+    }
+
+    // 2. Admin API key check (timing-safe comparison)
+    const adminKey = req.headers.get('x-admin-api-key');
+    const validAdminKey = process.env.ADMIN_API_KEY;
+
+    if (!adminKey || !validAdminKey) {
+      console.warn('⚠️ [SETTINGS] Missing admin API key');
+      await logAdminAccess(ip, false, { reason: 'Missing API key' });
+
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Admin API key required' },
+        { status: 401 }
+      );
+    }
+
+    // Timing-safe comparison to prevent timing attacks
+    try {
+      const providedBuffer = Buffer.from(adminKey, 'utf-8');
+      const validBuffer = Buffer.from(validAdminKey, 'utf-8');
+
+      if (
+        providedBuffer.length !== validBuffer.length ||
+        !crypto.timingSafeEqual(providedBuffer, validBuffer)
+      ) {
+        console.warn('⚠️ [SETTINGS] Invalid admin API key');
+        await logAdminAccess(ip, false, { reason: 'Invalid API key' });
+
+        return NextResponse.json(
+          { error: 'Unauthorized', message: 'Invalid admin API key' },
+          { status: 401 }
+        );
+      }
+    } catch (error) {
+      console.error('[SETTINGS] Authentication error:', error);
+      await logAdminAccess(ip, false, { reason: 'Authentication error' });
+
+      return NextResponse.json(
+        { error: 'Unauthorized', message: 'Authentication error' },
         { status: 401 }
       );
     }
@@ -155,6 +210,12 @@ export async function POST(req: NextRequest) {
         process.env[key] = value;
       }
     }
+
+    // Log successful settings update
+    await logAdminAccess(ip, true, {
+      keys: Array.from(updatedKeys), // Don't log values (may contain secrets)
+      count: updatedKeys.size,
+    });
 
     return NextResponse.json({
       success: true,

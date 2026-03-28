@@ -192,7 +192,68 @@ function checkEnvVariables(): CheckResult {
     fixDescription:
       `Edit .env file and set these variables:\n` +
       missing.map(v => `   - ${v}`).join('\n') +
-      `\n\n   See .env.example for instructions on getting API keys.`,
+      `\n\n   See .env.example for instructions on getting API keys.\n` +
+      `   Or run: npm run first-run (interactive setup wizard)`,
+  };
+}
+
+/**
+ * Check if Whisk API token is valid format and not expired
+ */
+function checkWhiskToken(): CheckResult {
+  const envPath = path.join(process.cwd(), '.env');
+
+  if (!fs.existsSync(envPath)) {
+    return {
+      passed: false,
+      message: `Cannot check Whisk token (no .env file)`,
+    };
+  }
+
+  const envContent = fs.readFileSync(envPath, 'utf8');
+  const tokenMatch = envContent.match(/^WHISK_API_TOKEN=(.*)$/m);
+
+  if (!tokenMatch) {
+    return {
+      passed: false,
+      message: `WHISK_API_TOKEN not found in .env ${crossMark()}`,
+    };
+  }
+
+  const token = tokenMatch[1].trim();
+
+  // Check for placeholder value
+  if (token.includes('your_') || token.includes('_here') || token.length < 100) {
+    return {
+      passed: false,
+      message: `Whisk token is placeholder value ${crossMark()}`,
+      fixDescription:
+        `Follow Whisk token refresh process:\n` +
+        `   1. Open https://labs.google.com/whisk in browser\n` +
+        `   2. F12 → Network tab\n` +
+        `   3. Generate test image\n` +
+        `   4. Find "generateImage" request\n` +
+        `   5. Copy Authorization header (starts with "Bearer ya29...")\n` +
+        `   6. Update WHISK_API_TOKEN in .env\n\n` +
+        `   Or run: npm run first-run (interactive setup wizard)`,
+    };
+  }
+
+  // Check token format (should start with ya29.)
+  const cleanToken = token.replace(/^Bearer\s+/i, '');
+  if (!cleanToken.startsWith('ya29.')) {
+    return {
+      passed: false,
+      message: `Whisk token has invalid format (should start with ya29.) ${crossMark()}`,
+      fixDescription:
+        `Get a fresh token from https://labs.google.com/whisk\n` +
+        `   Token should start with "ya29." (Google OAuth token format)`,
+    };
+  }
+
+  return {
+    passed: true,
+    message: `Whisk token format is valid ${checkMark()}`,
   };
 }
 
@@ -392,6 +453,7 @@ async function main() {
     checkFFmpeg(),
     checkEnvFile(),
     checkEnvVariables(),
+    checkWhiskToken(),
     checkStorageAccess(),
   ];
 

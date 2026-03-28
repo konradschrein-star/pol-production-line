@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/Button';
 import { Icon } from '@/components/ui/Icon';
 import { StylePresetManager } from '@/components/settings/StylePresetManager';
 import { StylePresetCreator } from '@/components/settings/StylePresetCreator';
+import { UpdateButton } from '@/components/system/UpdateButton';
 
 export default function SettingsPage() {
   // Active tab state
@@ -45,6 +46,11 @@ export default function SettingsPage() {
   const [whiskToken, setWhiskToken] = useState('');
   const [whiskModel, setWhiskModel] = useState('IMAGEN_3_5');
 
+  // Auto-Start Settings (Phase 5)
+  const [autoStartEnabled, setAutoStartEnabled] = useState(false);
+  const [startMinimized, setStartMinimized] = useState(false);
+  const [loadingAutoStart, setLoadingAutoStart] = useState(true);
+
   // Token Refresh State
   const [isRefreshingToken, setIsRefreshingToken] = useState(false);
   const [tokenRefreshSuccess, setTokenRefreshSuccess] = useState(false);
@@ -64,6 +70,64 @@ export default function SettingsPage() {
   useEffect(() => {
     loadSettings();
   }, []);
+
+  // Load auto-start status (Electron only)
+  useEffect(() => {
+    loadAutoStartStatus();
+  }, []);
+
+  const loadAutoStartStatus = async () => {
+    // Check if running in Electron
+    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+      try {
+        const result = await (window as any).electronAPI.autoStart.getStatus();
+        if (result.success) {
+          setAutoStartEnabled(result.enabled || false);
+        }
+        setLoadingAutoStart(false);
+      } catch (err) {
+        console.error('Failed to load auto-start status:', err);
+        setLoadingAutoStart(false);
+      }
+    } else {
+      // Not in Electron, hide auto-start controls
+      setLoadingAutoStart(false);
+    }
+  };
+
+  const handleToggleAutoStart = async (enabled: boolean) => {
+    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+      try {
+        const result = await (window as any).electronAPI.autoStart.toggle(
+          enabled,
+          startMinimized
+        );
+        if (result.success) {
+          setAutoStartEnabled(enabled);
+        } else {
+          console.error('Failed to toggle auto-start:', result.error);
+          setMessage({
+            type: 'error',
+            text: `❌ Failed to toggle auto-start: ${result.error}`,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to toggle auto-start:', err);
+        setMessage({
+          type: 'error',
+          text: '❌ Failed to toggle auto-start. Check console for details.',
+        });
+      }
+    }
+  };
+
+  const handleToggleStartMinimized = async (minimized: boolean) => {
+    setStartMinimized(minimized);
+    // Re-apply auto-start with new minimized setting
+    if (autoStartEnabled) {
+      handleToggleAutoStart(true);
+    }
+  };
 
   const loadSettings = async () => {
     try {
@@ -262,6 +326,116 @@ export default function SettingsPage() {
       {/* General Settings Tab */}
       {activeTab === 'general' && (
         <div className="max-w-3xl space-y-6">
+        {/* Auto-Start Section (Phase 5 - Electron only) */}
+        {typeof window !== 'undefined' && (window as any).electronAPI && !loadingAutoStart && (
+          <Card variant="default">
+            <div className="border-b border-outline-variant px-6 py-4">
+              <h2 className="text-lg font-bold text-white uppercase tracking-wider">
+                🚀 STARTUP
+              </h2>
+              <p className="text-sm text-on-surface-variant mt-1">
+                Automatically launch Obsidian News Desk when Windows starts
+              </p>
+            </div>
+
+            <div className="p-6 space-y-6">
+              <div className="flex items-center justify-between">
+                <div className="flex-1 mr-6">
+                  <h3 className="font-bold text-on-surface mb-1">Start with Windows</h3>
+                  <p className="text-sm text-on-surface-variant">
+                    Automatically launch the app when you log in to Windows
+                  </p>
+                </div>
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={autoStartEnabled}
+                    onChange={(e) => handleToggleAutoStart(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-14 h-7 bg-surface-container-high peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary shadow-md"></div>
+                </label>
+              </div>
+
+              {autoStartEnabled && (
+                <div className="flex items-center justify-between pl-4 border-l-2 border-outline-variant">
+                  <div className="flex-1 mr-6">
+                    <h3 className="font-bold text-on-surface mb-1">Start minimized to tray</h3>
+                    <p className="text-sm text-on-surface-variant">
+                      Launch app in system tray without showing the main window
+                    </p>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={startMinimized}
+                      onChange={(e) => handleToggleStartMinimized(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-14 h-7 bg-surface-container-high peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary/30 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-6 after:w-6 after:transition-all peer-checked:bg-primary shadow-md"></div>
+                  </label>
+                </div>
+              )}
+
+              <div className="bg-blue-900/20 border-l-4 border-blue-500 p-4 rounded-lg">
+                <h4 className="font-bold text-blue-400 mb-2">💡 About Auto-Start</h4>
+                <p className="text-xs text-blue-200 mb-2">
+                  When enabled, the app will launch automatically when you log in to Windows. This is useful for keeping the system always ready for video production.
+                </p>
+                <ul className="text-xs text-blue-200 space-y-1 ml-4">
+                  <li>• Windows registry entry: HKCU\Software\Microsoft\Windows\CurrentVersion\Run</li>
+                  <li>• No admin privileges required</li>
+                  <li>• Can be disabled anytime from this page</li>
+                </ul>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {/* Software Updates Section (Phase 6) */}
+        {typeof window !== 'undefined' && (window as any).electronAPI && (
+          <Card variant="default">
+            <div className="border-b border-outline-variant px-6 py-4">
+              <h2 className="text-lg font-bold text-white uppercase tracking-wider">
+                🔄 SOFTWARE UPDATES
+              </h2>
+              <p className="text-sm text-on-surface-variant mt-1">
+                Keep Obsidian News Desk up to date with the latest features and fixes
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div>
+                <h3 className="font-bold text-on-surface mb-2">Current Version</h3>
+                <p className="text-sm text-on-surface-variant">
+                  Obsidian News Desk v1.0.0
+                </p>
+              </div>
+
+              <div>
+                <h3 className="font-bold text-on-surface mb-2">Check for Updates</h3>
+                <p className="text-sm text-on-surface-variant mb-3">
+                  The app automatically checks for updates every 6 hours. You can also check manually.
+                </p>
+                <UpdateButton />
+              </div>
+
+              <div className="bg-blue-900/20 border-l-4 border-blue-500 p-4 rounded-lg">
+                <h4 className="font-bold text-blue-400 mb-2">📦 Auto-Update System</h4>
+                <p className="text-xs text-blue-200 mb-2">
+                  Updates are downloaded from GitHub Releases and installed automatically:
+                </p>
+                <ul className="text-xs text-blue-200 space-y-1 ml-4">
+                  <li>• Checks on startup and every 6 hours</li>
+                  <li>• Downloads in background with user consent</li>
+                  <li>• Installs on app restart</li>
+                  <li>• Release notes shown before download</li>
+                </ul>
+              </div>
+            </div>
+          </Card>
+        )}
+
         {/* AI Provider Section */}
         <Card variant="default">
           <div className="border-b border-outline-variant px-6 py-4">

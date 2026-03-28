@@ -41,6 +41,51 @@ contextBridge.exposeInMainWorld('electronAPI', {
     getStatus: () => ipcRenderer.invoke('workers:getStatus'),
   },
 
+  // Auto-start operations (Phase 5)
+  autoStart: {
+    toggle: (enabled: boolean, minimized?: boolean) =>
+      ipcRenderer.invoke('auto-start:toggle', enabled, minimized),
+    getStatus: () =>
+      ipcRenderer.invoke('auto-start:getStatus'),
+    enable: (minimized?: boolean) =>
+      ipcRenderer.invoke('auto-start:enable', minimized),
+  },
+
+  // Update operations (Phase 6)
+  updates: {
+    // IPC methods
+    checkForUpdates: () => ipcRenderer.invoke('update:check'),
+    downloadUpdate: () => ipcRenderer.invoke('update:download'),
+    installUpdate: () => ipcRenderer.invoke('update:install'),
+    getStatus: () => ipcRenderer.invoke('update:getStatus'),
+
+    // Event listeners
+    onAvailable: (callback: (info: any) => void) => {
+      ipcRenderer.on('update:available', (_event, info) => callback(info));
+    },
+    onNotAvailable: (callback: () => void) => {
+      ipcRenderer.on('update:not-available', () => callback());
+    },
+    onProgress: (callback: (progress: any) => void) => {
+      ipcRenderer.on('update:progress', (_event, progress) => callback(progress));
+    },
+    onDownloaded: (callback: (info: any) => void) => {
+      ipcRenderer.on('update:downloaded', (_event, info) => callback(info));
+    },
+    onError: (callback: (error: string) => void) => {
+      ipcRenderer.on('update:error', (_event, error) => callback(error));
+    },
+
+    // Cleanup
+    removeUpdateListeners: () => {
+      ipcRenderer.removeAllListeners('update:available');
+      ipcRenderer.removeAllListeners('update:not-available');
+      ipcRenderer.removeAllListeners('update:progress');
+      ipcRenderer.removeAllListeners('update:downloaded');
+      ipcRenderer.removeAllListeners('update:error');
+    },
+  },
+
   // Progress events
   onProgress: (callback: (message: string) => void) => {
     ipcRenderer.on('progress', (_event, message) => callback(message));
@@ -107,6 +152,38 @@ declare global {
         start: () => Promise<void>;
         stop: () => Promise<void>;
         getStatus: () => Promise<{ running: boolean; pid?: number }>;
+      };
+      autoStart: {
+        toggle: (enabled: boolean, minimized?: boolean) => Promise<{
+          success: boolean;
+          enabled?: boolean;
+          error?: string;
+        }>;
+        getStatus: () => Promise<{
+          success: boolean;
+          enabled?: boolean;
+          error?: string;
+        }>;
+        enable: (minimized?: boolean) => Promise<{
+          success: boolean;
+          error?: string;
+        }>;
+      };
+      updates: {
+        checkForUpdates: () => Promise<{ success: boolean; error?: string }>;
+        downloadUpdate: () => Promise<{ success: boolean; error?: string }>;
+        installUpdate: () => void;
+        getStatus: () => Promise<{
+          success: boolean;
+          currentVersion?: string;
+          error?: string;
+        }>;
+        onAvailable: (callback: (info: any) => void) => void;
+        onNotAvailable: (callback: () => void) => void;
+        onProgress: (callback: (progress: any) => void) => void;
+        onDownloaded: (callback: (info: any) => void) => void;
+        onError: (callback: (error: string) => void) => void;
+        removeUpdateListeners: () => void;
       };
       onProgress: (callback: (message: string) => void) => void;
       removeProgressListener: () => void;

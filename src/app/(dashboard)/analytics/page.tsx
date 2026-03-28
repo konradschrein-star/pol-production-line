@@ -5,6 +5,9 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { MetricCard } from '@/components/analytics/MetricCard';
 import { PerformanceBreakdown } from '@/components/analytics/PerformanceBreakdown';
+import { PerformanceChart } from '@/components/analytics/PerformanceChart';
+import { WorkerHealthPanel } from '@/components/analytics/WorkerHealthPanel';
+import { ErrorBreakdown } from '@/components/analytics/ErrorBreakdown';
 
 interface AnalyticsData {
   totalJobs: number;
@@ -50,6 +53,8 @@ async function fetchAnalytics(): Promise<AnalyticsData> {
   }
 }
 
+type TimeRange = '24h' | '7d' | '30d';
+
 export default function AnalyticsPage() {
   const [analytics, setAnalytics] = useState<AnalyticsData>({
     totalJobs: 0,
@@ -61,6 +66,7 @@ export default function AnalyticsPage() {
     jobsByStatus: [],
   });
   const [loading, setLoading] = useState(true);
+  const [timeRange, setTimeRange] = useState<TimeRange>('7d');
 
   useEffect(() => {
     fetchAnalytics().then((data) => {
@@ -82,10 +88,32 @@ export default function AnalyticsPage() {
 
   return (
     <div>
-      <PageHeader
-        title="ANALYTICS"
-        subtitle="Production Performance Metrics"
-      />
+      <div className="flex items-center justify-between mb-6">
+        <PageHeader
+          title="ANALYTICS"
+          subtitle="Production Performance Metrics"
+        />
+
+        {/* Time Range Selector */}
+        <div className="flex items-center gap-2 bg-surface_container rounded-lg p-1">
+          {(['24h', '7d', '30d'] as TimeRange[]).map((range) => (
+            <button
+              key={range}
+              onClick={() => setTimeRange(range)}
+              className={`
+                px-4 py-2 rounded-md text-sm font-medium transition-colors
+                ${
+                  timeRange === range
+                    ? 'bg-primary text-on-primary'
+                    : 'text-gray-400 hover:text-white hover:bg-surface_container_high'
+                }
+              `}
+            >
+              {range === '24h' ? '24 Hours' : range === '7d' ? '7 Days' : '30 Days'}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Key Metrics Row 1 */}
@@ -145,7 +173,20 @@ export default function AnalyticsPage() {
           </div>
         )}
 
-        {/* Performance Breakdown */}
+        {/* Performance Charts (New) */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2">
+            <PerformanceChart timeRange={timeRange} />
+          </div>
+          <div>
+            <WorkerHealthPanel timeRange={timeRange} refreshInterval={30000} />
+          </div>
+        </div>
+
+        {/* Error Breakdown (New) */}
+        <ErrorBreakdown timeRange={timeRange} />
+
+        {/* Performance Breakdown (Legacy) */}
         {analytics.performanceBreakdown ? (
           <PerformanceBreakdown
             analysis={analytics.performanceBreakdown.analysis}
@@ -187,7 +228,7 @@ export default function AnalyticsPage() {
                   <div className="flex items-center gap-4">
                     <span
                       className={`
-                        px-3 py-1 text-xs font-bold uppercase tracking-wider
+                        px-3 py-1 text-xs font-bold uppercase tracking-wider rounded-full
                         ${
                           item.status === 'completed'
                             ? 'bg-green-900/20 text-green-400'

@@ -38,6 +38,12 @@ extraResources:
     filter:
       - "**/*"
 
+  # FFmpeg binaries for video rendering
+  - from: "resources/bin"
+    to: "bin"
+    filter:
+      - "**/*"
+
   # Scripts and utilities
   - from: "scripts/optimize-avatar.sh"
     to: "scripts/optimize-avatar.sh"
@@ -69,6 +75,19 @@ win:
   artifactName: ${productName}-Setup-${version}.${ext}
   publisherName: Obsidian News Desk
   verifyUpdateCodeSignature: false
+  signAndEditExecutable: false
+  signDlls: false
+
+  # CODE SIGNING (Optional - Phase 6)
+  # Uncomment and configure when certificate is obtained
+  # See docs/CODE_SIGNING.md for setup guide
+  # certificateFile: certs/code-signing.pfx
+  # certificatePassword: ${env:CSC_KEY_PASSWORD}
+  # signingHashAlgorithms:
+  #   - sha256
+  # rfc3161TimeStampServer: http://timestamp.digicert.com
+
+  # Keep signing disabled for now
   sign: null
   signingHashAlgorithms: null
 
@@ -83,7 +102,7 @@ nsis:
   shortcutName: ${productName}
   installerIcon: electron/build/icon.ico
   uninstallerIcon: electron/build/icon.ico
-  installerHeader: electron/build/installerHeader.bmp
+  # installerHeader: electron/build/installerHeader.bmp  # Optional - not included
   installerHeaderIcon: electron/build/icon.ico
   license: LICENSE
   warningsAsErrors: false
@@ -94,9 +113,6 @@ nsis:
 
 # Compression
 compression: normal
-
-# App metadata
-artifactName: ${name}-${version}-${os}-${arch}.${ext}
 
 # Publish configuration (for auto-updates)
 publish:

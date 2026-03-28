@@ -14,7 +14,7 @@ import * as dockerLifecycle from '../docker/lifecycle';
 import * as workerSpawner from '../workers/spawner';
 import * as portChecker from './port-checker';
 import logger from '../logger';
-import { resolveNodePath, getNodeRuntimeInfo } from '../../src/lib/runtime/node-resolver';
+import { resolveNodePath, getNodeRuntimeInfo } from '../../../src/lib/runtime/node-resolver';
 import { HealthMonitor } from './health-monitor';
 import { AutoRestarter } from './auto-restart';
 import { ServiceGraph } from './service-graph';

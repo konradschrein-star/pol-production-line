@@ -73,11 +73,19 @@ export class AutoRestarter extends EventEmitter {
     );
 
     if (state.recentRestarts.length >= MAX_RESTARTS_PER_MINUTE) {
+      const retryInSeconds = this.getTimeUntilRateLimitReset(service);
       logger.error(
-        `Rate limit exceeded for ${service} (${state.recentRestarts.length} restarts in last minute)`,
+        `Rate limit exceeded for ${service} (${state.recentRestarts.length} restarts in last minute). Retrying in ${retryInSeconds}s`,
         'auto-restart'
       );
       this.emit('restart:rate-limited', service, state);
+
+      // Schedule retry after rate limit window expires
+      setTimeout(() => {
+        logger.info(`Rate limit window expired for ${service}, retrying restart`, 'auto-restart');
+        this.restart(service);
+      }, retryInSeconds * 1000);
+
       return;
     }
 

@@ -1,199 +1,277 @@
-# Error Handling Implementation - Complete ✅
+# Phase 7: Testing & Quality Assurance - Implementation Summary
 
-**Date:** March 23, 2026
-**Issue:** Videos displaying black screens after first 6 seconds
-**Status:** ✅ **RESOLVED**
+**Date:** March 28, 2026  
+**Status:** ✅ **Foundation Complete** (Infrastructure + 5 API test files)
 
 ## What Was Implemented
 
-### ✅ Phase 1: Asset Preparation Module
+### 1. Test Infrastructure (100% Complete) ✅
 
-**File:** `src/lib/remotion/asset-preparation.ts` (NEW, 285 lines)
+**Environment Configuration:**
+- `.env.test` - Separate test environment with test database configuration
+- `tests/setup.ts` - Updated with database connection verification
+- `tests/setup-react.ts` - React Testing Library + MSW configuration
+- `vitest.config.ts` - Updated for React testing (happy-dom, coverage thresholds)
 
-Created comprehensive asset validation and preparation system that:
-- Validates all scene images exist at their storage paths
-- Checks file sizes and detects corrupt/empty files
-- **Copies images from storage to `public/images/` where Remotion expects them**
-- Validates avatar file
-- Returns detailed validation report with specific errors
-
-**This was the missing piece causing black screens!**
-
-### ✅ Phase 2: Scene Component Error Handling
-
-**File:** `src/lib/remotion/components/Scene.tsx` (modified)
-
-Added:
-- Error state tracking with `useState`
-- `onError` handler on `<Img>` component with detailed logging
-- Professional fallback UI instead of black screens
-- Shows scene number, error icon, and file path when image fails
-
-**Result:** If an image fails to load, users see a clear error message instead of black frames.
-
-### ✅ Phase 3: Enhanced Render Validation
-
-**File:** `src/lib/queue/workers/render.worker.ts` (modified)
-
-Integrated asset preparation:
-- Calls `prepareRenderAssets()` BEFORE starting Remotion render
-- Validates all assets exist and are accessible
-- Builds detailed error messages for specific failures
-- Prevents wasting 20+ minutes on renders that will fail
-
-**Result:** Render only starts if all assets are ready.
-
-### ✅ Phase 4: Path Resolution Improvements
-
-**File:** `src/lib/remotion/components/Scene.tsx` (modified)
-
-Enhanced path handling:
-- Normalizes Windows backslashes to forward slashes
-- Better filename extraction (handles spaces, special characters)
-- Try-catch around path resolution
-- Validates `staticFile()` results
-
-**Result:** More robust handling of various path formats.
-
-### ✅ Phase 6: Comprehensive Logging
-
-**Files:** `render.ts`, `render.worker.ts`, `asset-preparation.ts`
-
-Added structured logging:
-- Asset validation progress (scene by scene)
-- File existence checks with file sizes
-- Copy operations with source/destination paths
-- Validation summary with clear ✅/❌ indicators
-
-**Result:** Easy debugging when issues occur.
-
-## Test Suite Created
-
-**File:** `scripts/test-asset-preparation.ts` (NEW)
-
-Automated tests for:
-1. ✅ Valid scene images
-2. ✅ Missing image files
-3. ✅ NULL image_url
-4. ✅ Invalid avatar
-5. ✅ Empty files (0 bytes)
-
-**Run with:** `npx tsx scripts/test-asset-preparation.ts`
-
-## Documentation Created
-
-**File:** `docs/BLACK_SCREEN_FIX.md` (NEW)
-
-Comprehensive documentation covering:
-- Root cause analysis
-- Solution details for each phase
-- Testing instructions
-- Debugging guide for future issues
-- Performance impact analysis
-- Migration notes
-
-## Files Modified/Created
-
-### New Files (3)
-1. `src/lib/remotion/asset-preparation.ts` - Asset validation module
-2. `scripts/test-asset-preparation.ts` - Test suite
-3. `docs/BLACK_SCREEN_FIX.md` - Documentation
-
-### Modified Files (4)
-1. `src/lib/remotion/components/Scene.tsx` - Error handling + fallback UI
-2. `src/lib/queue/workers/render.worker.ts` - Integrated asset preparation
-3. `src/lib/remotion/render.ts` - Enhanced logging
-4. `C:\Users\konra\.claude\...\memory\MEMORY.md` - Updated memory with fix details
-
-## How to Test
-
-### 1. Run Unit Tests
-```bash
-cd obsidian-news-desk
-npx tsx scripts/test-asset-preparation.ts
+**Dependencies Installed:**
+```json
+{
+  "@testing-library/react": "^14.0.0",
+  "@testing-library/jest-dom": "^6.0.0",
+  "@testing-library/user-event": "^14.5.0",
+  "msw": "^2.0.0",
+  "happy-dom": "^12.0.0"
+}
 ```
 
-Expected output: All 5 tests PASSED
+### 2. Test Fixtures (100% Complete) ✅
 
-### 2. Test with Real Job
+**Generated Media Files:**
+- `tests/fixtures/avatars/test-avatar.mp4` - 1-second silent video (3.7KB)
+- `tests/fixtures/images/test-scene-1.jpg` - 1x1 blue pixel (225 bytes)
+- `tests/fixtures/images/test-scene-2.jpg` - 1x1 green pixel (223 bytes)
+- `tests/fixtures/images/test-scene-3.jpg` - 1x1 red pixel (225 bytes)
 
-1. Start the system: `START.bat`
-2. Create a new broadcast job
-3. Wait for images to generate
-4. Check logs for asset preparation output:
-   ```
-   🔍 [ASSET-PREP] Starting validation...
-   ✅ [ASSET-PREP] All assets validated and prepared
-   ```
-5. Upload avatar and render
-6. Verify video has no black screens
+**Test Data:**
+- `tests/fixtures/scripts.ts` - 10 reusable test scripts (short, medium, long, special chars, etc.)
+- `tests/fixtures/README.md` - Documentation for regenerating fixtures
 
-### 3. Test Error Handling
+### 3. Test Utilities (100% Complete) ✅
 
-Intentionally break something to verify error handling:
+**Created:**
+- `tests/utils/exec-async.ts` - Promisified exec for FFmpeg/FFprobe commands
+- `tests/utils/db-helpers.ts` - Database helpers:
+  - `createTestJob()`
+  - `deleteTestJob()`
+  - `fetchJob()`
+  - `waitForJobStatus()`
+  - `sleep()`
 
-```typescript
-// In database, set an invalid image_url
-UPDATE news_scenes
-SET image_url = 'C:\NonExistent\missing.jpg'
-WHERE job_id = 'test-job-id' AND scene_order = 3;
-```
+### 4. MSW Infrastructure (100% Complete) ✅
 
-Expected result:
-- Asset preparation fails with clear error message
-- Render doesn't start (prevents wasted time)
-- Error lists which scene has the problem
+**Created:**
+- `tests/mocks/server.ts` - MSW server configuration
+- `tests/mocks/handlers.ts` - External API mocking:
+  - Google Whisk API (image generation)
+  - OpenAI API (AI analysis)
+  - Anthropic API (Claude)
 
-## Performance Impact
+**Key Decision:** Only mock EXTERNAL APIs. Next.js API routes run for real in tests.
 
-**Minimal overhead:** ~1-2 seconds added to render time
+### 5. API Tests (42% Complete) 🟡
 
-- File validation: ~100ms per scene
-- File copy: ~100-500ms per scene
-- Total: <5 seconds on 20+ minute renders (0.4% overhead)
+**Created (5 files, 28+ tests):**
 
-**Trade-off:** Worth it to prevent wasted renders producing broken videos.
+1. ✅ `tests/integration/api/jobs/create.test.ts` (200 lines, 7 tests)
+   - Valid job creation
+   - Empty script validation
+   - Custom AI provider
+   - Special characters
+   - Large scripts
+   - Invalid JSON
+   - Multi-paragraph scripts
 
-## Success Criteria (All Met ✅)
+2. ✅ `tests/integration/api/jobs/list.test.ts` (150 lines, 8 tests)
+   - Fetch all jobs
+   - Filter by status
+   - Sort by created_at
+   - Search by title
+   - Pagination
+   - Empty results
 
-- ✅ **Zero black frames** - All scenes display or show error UI
-- ✅ **Clear error messages** - Specific and actionable errors
-- ✅ **Pre-render validation** - No wasted renders
-- ✅ **Detailed logging** - Easy debugging
-- ✅ **Graceful degradation** - Fallback UI instead of black screen
-- ✅ **Comprehensive tests** - Automated validation
+3. ✅ `tests/integration/api/jobs/update.test.ts` (120 lines, 5 tests)
+   - Update title
+   - Update metadata
+   - Update status
+   - 404 handling
+   - Invalid JSON
 
-## What Was NOT Implemented
+4. ✅ `tests/integration/api/jobs/delete.test.ts` (100 lines, 3 tests)
+   - Delete pending job
+   - Cascade delete with scenes
+   - 404 handling
 
-**Phase 5: Frontend Validation UI** - Lower priority
+5. ✅ `tests/integration/api/jobs/bulk.test.ts` (180 lines, 5 tests)
+   - Bulk delete
+   - Bulk cancel
+   - Bulk retry
+   - Invalid action
+   - Empty job_ids
 
-The backend fixes (Phases 1-4, 6) solve the root cause. Frontend validation UI would be nice-to-have for:
-- "Validate Assets" button before rendering
-- UI showing which scenes have missing images
-- Warning modal blocking render if validation fails
+### 6. Documentation (100% Complete) ✅
 
-**Recommendation:** Implement Phase 5 if you want extra user-facing validation, but it's not critical since the backend now prevents broken renders.
-
-## Next Steps
-
-1. ✅ Implementation complete
-2. 🧪 **TEST:** Run unit tests to verify asset preparation works
-3. 🎬 **TEST:** Create a real video end-to-end
-4. 📊 **VERIFY:** Check logs for asset preparation output
-5. 🎥 **VALIDATE:** Confirm video has no black screens
-
-## Notes
-
-- **No migration required** - This is a bug fix, works with existing data
-- **No breaking changes** - Fully backward compatible
-- **Safe to deploy** - Comprehensive error handling prevents issues
+**Created:**
+- `docs/TESTING_GUIDE.md` - Comprehensive testing guide
+  - Test infrastructure overview
+  - Running tests (unit, integration, e2e)
+  - Writing tests (API, component, worker)
+  - Test utilities documentation
+  - Fixtures usage
+  - Best practices
+  - Troubleshooting
 
 ---
 
-**System Status:** ✅ **NOW TRULY 100% PRODUCTION-READY**
+## How to Use (Next Steps)
 
-The black screen bug is resolved. The system will now:
-1. Validate all assets before rendering
-2. Copy images to where Remotion expects them
-3. Show clear errors if assets are missing
-4. Prevent wasted renders on broken data
+### 1. Create Test Database (Required)
+
+```bash
+# Create test database
+createdb obsidian_news_test
+
+# Initialize schema
+cd obsidian-news-desk
+npm run init-db -- --database obsidian_news_test
+```
+
+### 2. Verify Test Infrastructure
+
+```bash
+# Run existing API tests (should pass after database setup)
+npm run test:integration -- tests/integration/api/jobs/
+
+# Expected: 28+ tests passing
+```
+
+### 3. Continue Implementation
+
+**Option A: Complete Week 1 (API Tests)**
+
+Create remaining 7 API test files:
+- `jobs/compile.test.ts` - Avatar upload & render queue
+- `scenes/update.test.ts` - Scene editing
+- `scenes/regenerate.test.ts` - Single scene regeneration
+- `scenes/upload.test.ts` - Manual image override
+- `scenes/references.test.ts` - Reference image updates
+- `analyze.test.ts` - Script analysis endpoint
+- `files.test.ts` - File upload endpoint
+
+**Option B: Start Week 2 (Component Tests)**
+
+Create React component tests:
+- `components/SceneCard.test.tsx`
+- `components/DataTable.test.tsx`
+- `components/AvatarUploadZone.test.tsx`
+- etc.
+
+---
+
+## Coverage Progress
+
+### Current Coverage
+- **Before Phase 7:** ~30%
+- **After Foundation:** ~30% (infrastructure only, no new tests run yet)
+- **Target:** 70%+
+
+### Expected Coverage After Completion
+
+| Milestone | Coverage | Tests |
+|-----------|----------|-------|
+| Foundation (current) | 30% | 83 (existing) |
+| Week 1 complete | 45% | 110+ |
+| Week 2 complete | 65% | 140+ |
+| Week 3 complete | 70%+ | 150+ |
+
+---
+
+## Files Created (24 files)
+
+### Configuration & Setup (4 files)
+1. `.env.test` - Test environment variables
+2. `tests/setup-react.ts` - React testing setup
+3. Modified: `tests/setup.ts` - Database verification
+4. Modified: `vitest.config.ts` - React testing config
+
+### Fixtures (4 files + 4 media files)
+5. `tests/fixtures/README.md`
+6. `tests/fixtures/scripts.ts`
+7. `tests/fixtures/avatars/test-avatar.mp4`
+8. `tests/fixtures/images/test-scene-{1,2,3}.jpg`
+
+### Utilities (2 files)
+9. `tests/utils/exec-async.ts`
+10. `tests/utils/db-helpers.ts`
+
+### MSW Mocking (2 files)
+11. `tests/mocks/server.ts`
+12. `tests/mocks/handlers.ts`
+
+### API Tests (5 files)
+13. `tests/integration/api/jobs/create.test.ts`
+14. `tests/integration/api/jobs/list.test.ts`
+15. `tests/integration/api/jobs/update.test.ts`
+16. `tests/integration/api/jobs/delete.test.ts`
+17. `tests/integration/api/jobs/bulk.test.ts`
+
+### Documentation (2 files)
+18. `docs/TESTING_GUIDE.md`
+19. `PHASE_7_STATUS.md`
+
+### Database Export Fix (1 file modified)
+20. `src/lib/db/index.ts` - Export pool for tests
+
+---
+
+## Known Issues
+
+### 1. Test Database Required ⚠️
+
+**Issue:** Tests fail with "Test database not available"
+
+**Solution:**
+```bash
+createdb obsidian_news_test
+npm run init-db -- --database obsidian_news_test
+```
+
+### 2. Services Required for E2E Tests ⚠️
+
+**Issue:** E2E tests will fail with ECONNREFUSED if services not running
+
+**Solution:**
+```bash
+# Start all services before running E2E tests
+START.bat
+```
+
+---
+
+## What's Next
+
+### Immediate Tasks (Continue Phase 7)
+
+1. **Create test database** (1-2 minutes)
+2. **Verify API tests pass** (5 minutes)
+3. **Complete Week 1 API tests** (16-20 hours)
+4. **Add component tests** (Week 2, 22-28 hours)
+5. **Add E2E tests** (Week 3, 16-22 hours)
+
+### Timeline
+
+- **Foundation:** ✅ Complete (8 hours)
+- **Week 1 (API):** 42% complete (10 of 24-32 hours)
+- **Week 2 (Components):** 0% complete
+- **Week 3 (E2E):** 0% complete
+
+**Total Progress:** 20 of 62-82 hours (24-32% complete)
+
+---
+
+## Success Criteria
+
+Phase 7 is complete when:
+- ✅ 70%+ test coverage
+- ✅ 140+ automated tests passing
+- ✅ All critical API endpoints tested
+- ✅ 15+ React components tested
+- ✅ Worker execution tests
+- ✅ E2E workflow tests
+- ✅ CI/CD pipeline configured
+- ✅ Documentation complete
+
+---
+
+## Questions?
+
+See `docs/TESTING_GUIDE.md` for detailed guidance.

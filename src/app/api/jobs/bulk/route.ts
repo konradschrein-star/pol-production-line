@@ -2,21 +2,44 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { withTransaction } from '@/lib/db/transactions';
 import { cancelJobQueues } from '@/lib/queue/cleanup';
+import { BulkOperationSchema } from '@/lib/validation/bulk-schemas';
+import { logBulkOperation } from '@/lib/security/audit-logger';
 
 /**
  * POST /api/jobs/bulk
- * Bulk operations on jobs (delete, cancel)
+ * Bulk operations on jobs (delete, cancel, retry)
+ *
+ * Phase 8 Security Enhancements:
+ * - Zod schema validation
+ * - Audit logging for all operations
+ * - Max 50 jobs per operation
  */
 export async function POST(request: NextRequest) {
   try {
-    const { action, jobIds } = await request.json();
+    const body = await request.json();
 
-    if (!Array.isArray(jobIds) || jobIds.length === 0) {
+    // Validate request body with Zod
+    const validation = BulkOperationSchema.safeParse(body);
+
+    if (!validation.success) {
       return NextResponse.json(
-        { error: 'jobIds must be a non-empty array' },
+        {
+          error: 'Validation error',
+          message: 'Invalid request body',
+          details: validation.error.errors,
+        },
         { status: 400 }
       );
     }
+
+    const { action, jobIds, reason } = validation.data;
+
+    // Get IP address for audit logging
+    const ip =
+      request.ip ||
+      request.headers.get('x-forwarded-for')?.split(',')[0] ||
+      request.headers.get('x-real-ip') ||
+      'unknown';
 
     console.log(`📦 [API] Bulk ${action} operation on ${jobIds.length} jobs`);
 
@@ -113,14 +136,83 @@ export async function POST(request: NextRequest) {
         }
         break;
 
+      case 'retry':
+        // Retry failed jobs by resetting status to 'pending'
+        for (const jobId of jobIds) {
+          try {
+            await withTransaction(async (client) => {
+              // Lock the row with FOR UPDATE to prevent concurrent modifications
+              const jobResult = await client.query(
+                'SELECT status, retry_count, max_retries FROM news_jobs WHERE id = $1 FOR UPDATE',
+                [jobId]
+              );
+
+              if (jobResult.rows.length > 0) {
+                const { status, retry_count, max_retries } = jobResult.rows[0];
+
+                // Only retry failed jobs
+                if (status === 'failed') {
+                  // Check if max retries exceeded
+                  if (retry_count >= max_retries) {
+                    console.warn(`[BULK] Job ${jobId} has exceeded max retries (${retry_count}/${max_retries})`);
+                    results.failed.push({
+                      jobId,
+                      error: `Max retries (${max_retries}) exceeded`,
+                    });
+                    return;
+                  }
+
+                  // Reset status to pending for retry
+                  await client.query(
+                    `UPDATE news_jobs
+                     SET status = 'pending',
+                         error_message = NULL,
+                         retry_count = retry_count + 1,
+                         last_retry_at = NOW(),
+                         updated_at = NOW()
+                     WHERE id = $1`,
+                    [jobId]
+                  );
+
+                  console.log(`[BULK] Job ${jobId} reset to pending for retry (attempt ${retry_count + 1}/${max_retries})`);
+                  results.succeeded.push(jobId);
+                } else {
+                  // Not a failed job - skip but don't fail
+                  console.log(`[BULK] Job ${jobId} status is ${status}, skipping retry`);
+                  results.succeeded.push(jobId);
+                }
+              } else {
+                // Job doesn't exist
+                results.failed.push({
+                  jobId,
+                  error: 'Job not found',
+                });
+              }
+            });
+          } catch (error) {
+            results.failed.push({
+              jobId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            });
+          }
+        }
+        break;
+
       default:
         return NextResponse.json(
-          { error: 'Invalid action. Must be "delete" or "cancel"' },
+          { error: 'Invalid action. Must be "delete", "cancel", or "retry"' },
           { status: 400 }
         );
     }
 
     console.log(`✅ [API] Bulk operation complete: ${results.succeeded.length} succeeded, ${results.failed.length} failed`);
+
+    // Log bulk operation to audit log
+    await logBulkOperation(action, jobIds.length, ip, {
+      succeeded: results.succeeded.length,
+      failed: results.failed.length,
+      reason,
+    });
 
     return NextResponse.json({
       success: results.failed.length === 0,

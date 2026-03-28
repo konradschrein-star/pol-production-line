@@ -172,7 +172,7 @@ export class TrayManager {
   /**
    * Load icon with graceful fallback
    */
-  private loadIcon(iconPath: string): nativeImage {
+  private loadIcon(iconPath: string): Electron.NativeImage {
     try {
       const icon = nativeImage.createFromPath(iconPath);
       if (icon.isEmpty()) {
@@ -259,6 +259,10 @@ export class TrayManager {
       {
         label: 'View Logs',
         click: () => this.openLogs(),
+      },
+      {
+        label: 'Settings',
+        click: () => this.openSettings(),
       },
       { type: 'separator' },
       {
@@ -352,6 +356,21 @@ export class TrayManager {
     logger.info('Opening logs folder from tray', 'tray');
     const logsDir = logger.getLogsDirectory();
     shell.openPath(logsDir);
+  }
+
+  /**
+   * Open settings page in main window (Phase 5)
+   */
+  private openSettings(): void {
+    logger.info('Opening settings page from tray', 'tray');
+    if (this.mainWindow && !this.mainWindow.isDestroyed()) {
+      this.mainWindow.webContents.loadURL('http://localhost:8347/settings');
+      this.mainWindow.show();
+      this.mainWindow.focus();
+    } else {
+      // Fallback if main window not available
+      shell.openExternal('http://localhost:8347/settings');
+    }
   }
 
   /**

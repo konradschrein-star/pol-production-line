@@ -13,6 +13,7 @@ import { EventEmitter } from 'events';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import logger from '../logger';
+import { getWorkerStatus } from '../workers/spawner';
 
 const execPromise = promisify(exec);
 
@@ -20,6 +21,7 @@ export interface HealthStatus {
   service: string;
   healthy: boolean;
   lastCheck: Date;
+  lastStateChange: Date; // Track when healthy state last changed
   consecutiveFailures: number;
   details?: string;
 }
@@ -96,8 +98,8 @@ export class HealthMonitor extends EventEmitter {
     } else {
       // Check if all services have been stable for 5+ minutes
       const allStableLongTerm = statuses.every(s => {
-        const timeSinceCheck = Date.now() - s.lastCheck.getTime();
-        return s.healthy && timeSinceCheck > 300000; // 5 minutes
+        const timeSinceStateChange = Date.now() - s.lastStateChange.getTime();
+        return s.healthy && timeSinceStateChange > 300000; // 5 minutes
       });
 
       this.pollInterval = allStableLongTerm ? this.maxPollInterval : this.normalPollInterval;
@@ -174,20 +176,20 @@ export class HealthMonitor extends EventEmitter {
    * Check workers process via PID
    */
   private async checkWorkers(): Promise<void> {
-    // Get worker PID from spawner module
-    const workerPid = (global as any).workerProcess?.pid;
+    // Get worker status from spawner module
+    const workerStatus = getWorkerStatus();
 
-    if (!workerPid) {
+    if (!workerStatus.running || !workerStatus.pid) {
       this.updateStatus('workers', false, 'Process not started');
       return;
     }
 
     try {
       // Signal 0 checks if process exists (cross-platform)
-      process.kill(workerPid, 0);
-      this.updateStatus('workers', true, `PID ${workerPid} alive`);
+      process.kill(workerStatus.pid, 0);
+      this.updateStatus('workers', true, `PID ${workerStatus.pid} alive`);
     } catch (err) {
-      this.updateStatus('workers', false, `PID ${workerPid} not found`);
+      this.updateStatus('workers', false, `PID ${workerStatus.pid} not found`);
     }
   }
 
@@ -226,11 +228,16 @@ export class HealthMonitor extends EventEmitter {
   private updateStatus(service: string, healthy: boolean, details?: string): void {
     const prev = this.status.get(service);
     const consecutiveFailures = healthy ? 0 : (prev?.consecutiveFailures || 0) + 1;
+    const now = new Date();
+
+    // Determine if state changed (for adaptive polling)
+    const stateChanged = !prev || prev.healthy !== healthy;
 
     const newStatus: HealthStatus = {
       service,
       healthy,
-      lastCheck: new Date(),
+      lastCheck: now,
+      lastStateChange: stateChanged ? now : (prev?.lastStateChange || now),
       consecutiveFailures,
       details,
     };
