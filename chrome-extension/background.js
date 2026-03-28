@@ -124,6 +124,18 @@ chrome.webRequest.onCompleted.addListener(
             const now = Date.now();
             const validityHours = ((expiresAt - now) / (1000 * 60 * 60)).toFixed(1);
 
+            // CRITICAL: Skip expired tokens to prevent infinite loop
+            if (expiresAt < now) {
+              console.warn(`[Whisk Manager] ⏰ Skipping EXPIRED token (expired ${Math.abs(validityHours)} hours ago)`);
+              return;
+            }
+
+            // CRITICAL: Debounce - don't process if we just processed a token within last 30 seconds
+            if (now - state.lastTokenTime < 30000) {
+              console.log('[Whisk Manager] 🚫 Debouncing - ignoring duplicate token capture (< 30s since last)');
+              return;
+            }
+
             console.log('[Whisk Manager] 🔑 New access token captured!');
             console.log(`[Whisk Manager] Token expires: ${expiresISO} (${validityHours} hours)`);
 
