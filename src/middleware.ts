@@ -23,6 +23,8 @@ import { getSecurityHeaders } from './lib/security/headers';
  */
 const PUBLIC_ENDPOINTS = [
   '/api/health',
+  '/api/whisk/token',  // Chrome extension needs to POST tokens without API key
+  '/api/whisk/extension-status',  // Extension status check
 ];
 
 /**

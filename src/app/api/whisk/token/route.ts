@@ -7,13 +7,27 @@ import { writeFileSync } from 'fs';
 import { join } from 'path';
 import { WhiskTokenStore } from '@/lib/whisk/token-store';
 
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type',
+};
+
+// Handle CORS preflight
+export async function OPTIONS() {
+  return NextResponse.json({}, { headers: CORS_HEADERS });
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const { token, timestamp } = body;
 
     if (!token) {
-      return NextResponse.json({ error: 'Token is required' }, { status: 400 });
+      return NextResponse.json(
+        { error: 'Token is required' },
+        { status: 400, headers: CORS_HEADERS }
+      );
     }
 
     console.log('🔑 [Whisk Token] Received new token from extension');
@@ -30,17 +44,20 @@ export async function POST(req: NextRequest) {
     console.log('✅ [Whisk Token] Token updated in memory and .env file');
     console.log('✅ [Whisk Token] Workers will use new token immediately!');
 
-    return NextResponse.json({
-      success: true,
-      message: 'Token received and activated',
-      timestamp: Date.now(),
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        message: 'Token received and activated',
+        timestamp: Date.now(),
+      },
+      { headers: CORS_HEADERS }
+    );
 
   } catch (error) {
     console.error('❌ [Whisk Token] Error:', error);
     return NextResponse.json(
       { error: 'Failed to save token' },
-      { status: 500 }
+      { status: 500, headers: CORS_HEADERS }
     );
   }
 }
