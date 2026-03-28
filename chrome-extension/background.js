@@ -19,6 +19,7 @@ let state = {
   isRefreshing: false,
   backendConnected: false,
   errorLog: [],
+  lastAuthSessionFetch: 0,  // Track last time we fetched auth session
 };
 
 /**
@@ -94,6 +95,15 @@ chrome.runtime.onInstalled.addListener(async (details) => {
 chrome.webRequest.onCompleted.addListener(
   async (details) => {
     try {
+      // CRITICAL: Rate limit auth session fetches to prevent spam
+      // Don't fetch more than once every 10 seconds
+      const now = Date.now();
+      if (now - state.lastAuthSessionFetch < 10000) {
+        // Silently skip - no need to spam logs
+        return;
+      }
+      state.lastAuthSessionFetch = now;
+
       // Fetch the auth session to get the response body
       // Note: This works because the session endpoint returns JSON with access_token
       const response = await fetch(details.url, {
