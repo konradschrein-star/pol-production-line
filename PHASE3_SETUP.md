@@ -8,9 +8,9 @@ Before running Phase 3, you need to install the Auto Whisk Chrome extension in y
 
 **Option A: Chrome/Edge (Recommended)**
 1. Open Chrome or Edge browser
-2. Visit: https://chromewebstore.google.com/detail/auto-whisk-nano-banana-im/gedfnhdibkfgacmkbjgpfjihacalnlpn
+2. Visit: https://chromewebstore.google.com/detail/auto-whisk-nano-banana-im/gcgblhgncmhjchllkcpcneeibddhmbbe
 3. Click "Add to Chrome" (works for Edge too)
-4. Extension ID: `gedfnhdibkfgacmkbjgpfjihacalnlpn`
+4. Extension ID: `gcgblhgncmhjchllkcpcneeibddhmbbe`
 
 **Option B: Manual Installation (If needed)**
 1. Download the extension from the Chrome Web Store
@@ -201,7 +201,7 @@ watch -n 2 "docker exec obsidian-postgres psql -U obsidian -d obsidian_news -c \
 
 **Issue: Extension not found**
 - Ensure Auto Whisk is installed
-- Check extension ID in `.env` matches: `gedfnhdibkfgacmkbjgpfjihacalnlpn`
+- Check extension ID in `.env` matches: `gcgblhgncmhjchllkcpcneeibddhmbbe`
 - Try opening `chrome://extensions/` to verify
 
 **Issue: Google authentication required**

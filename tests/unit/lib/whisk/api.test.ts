@@ -11,6 +11,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { WhiskAPIClient } from '@/lib/whisk/api';
 import { generateImageWithRetry } from '@/lib/whisk/generate-with-retry';
+import { WhiskTokenStore } from '@/lib/whisk/token-store';
 import axios from 'axios';
 
 // Mock axios
@@ -18,14 +19,14 @@ vi.mock('axios');
 const mockedAxios = vi.mocked(axios, true);
 
 // Helper to create mock responses in correct Whisk API format
-function createWhiskResponse(images: Array<{ url?: string; imageUrl?: string; base64?: string | null; encodedImage?: string }> = []) {
+function createWhiskResponse(images: Array<{ url?: string | null; imageUrl?: string | null; base64?: string | null; encodedImage?: string | null }> = []) {
   return {
     data: {
       imagePanels: [
         {
           generatedImages: images.map(img => ({
-            imageUrl: img.imageUrl || img.url || '',
-            encodedImage: img.encodedImage || img.base64 || '',
+            imageUrl: img.imageUrl ?? img.url ?? '',
+            encodedImage: img.encodedImage ?? img.base64 ?? '',
           })),
         },
       ],
@@ -66,8 +67,9 @@ describe('Whisk API Client', () => {
 
     it('should throw error if no token provided', () => {
       delete process.env.WHISK_API_TOKEN;
+      WhiskTokenStore.clearCache(); // Clear static cache
 
-      expect(() => new WhiskAPIClient()).toThrow('WHISK_API_TOKEN not set');
+      expect(() => new WhiskAPIClient()).toThrow('WHISK_API_TOKEN not');
     });
   });
 

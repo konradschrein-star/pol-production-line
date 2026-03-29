@@ -10,9 +10,21 @@
 import { chromium } from 'playwright';
 import { existsSync, mkdirSync } from 'fs';
 import { join } from 'path';
+import { config } from 'dotenv';
+import * as os from 'os';
 
-const AUTO_WHISK_URL = 'https://chromewebstore.google.com/detail/auto-whisk-nano-banana-im/gedfnhdibkfgacmkbjgpfjihacalnlpn';
-const EXTENSION_ID = 'gedfnhdibkfgacmkbjgpfjihacalnlpn';
+// ✅ FIX: Load environment variables
+config();
+
+// ✅ FIX: Read extension ID from environment (no hardcoded fallback)
+const EXTENSION_ID = process.env.AUTO_WHISK_EXTENSION_ID;
+if (!EXTENSION_ID) {
+  console.error('❌ AUTO_WHISK_EXTENSION_ID not configured in .env file');
+  console.error('   Add AUTO_WHISK_EXTENSION_ID=gcgblhgncmhjchllkcpcneeibddhmbbe to your .env file.');
+  process.exit(1);
+}
+
+const AUTO_WHISK_URL = `https://chromewebstore.google.com/detail/auto-whisk-nano-banana-im/${EXTENSION_ID}`;
 
 async function setupCometProfile() {
   console.log('\n🔧 COMET AUTOMATION PROFILE SETUP\n');
@@ -21,8 +33,10 @@ async function setupCometProfile() {
   console.log('2. Open the Auto Whisk extension installation page');
   console.log('3. Wait for you to install the extension and log into Google\n');
 
-  const cometExecutable = 'C:\\Users\\konra\\AppData\\Local\\Perplexity\\Comet\\Application\\comet.exe';
-  const automationProfilePath = 'C:\\Users\\konra\\AppData\\Local\\ObsidianNewsDesk\\comet-automation';
+  // ✅ FIX: Use environment-aware paths (not hardcoded to specific user)
+  const localAppData = process.env.LOCALAPPDATA || join(os.homedir(), 'AppData', 'Local');
+  const cometExecutable = join(localAppData, 'Perplexity', 'Comet', 'Application', 'comet.exe');
+  const automationProfilePath = join(localAppData, 'ObsidianNewsDesk', 'comet-automation');
 
   // Verify Comet executable exists
   if (!existsSync(cometExecutable)) {

@@ -14,7 +14,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./src/lib/db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U obsidian"]
+      test: ["CMD-SHELL", "pg_isready -U obsidian -d obsidian_news"]
       interval: 10s
       timeout: 5s
       retries: 5

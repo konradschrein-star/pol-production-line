@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { mkdirSync, existsSync } from 'fs';
+import { writeFile } from 'fs/promises'; // Bug #12 fix: Use async I/O
 import { join } from 'path';
 import { WhiskReferenceType } from '@/lib/whisk/types';
 
@@ -104,7 +105,8 @@ export async function POST(
     const filename = `${sceneId}_ref_${type}.${ext}`;
     const localPath = join(storageDir, filename);
 
-    writeFileSync(localPath, buffer);
+    // CRITICAL FIX (Bug #12): Use async I/O to prevent blocking event loop
+    await writeFile(localPath, buffer);
 
     console.log(`💾 [REFERENCES] Saved to: ${localPath}`);
 

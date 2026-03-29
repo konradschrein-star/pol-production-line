@@ -12,8 +12,19 @@
 import { spawn } from 'child_process';
 import { join } from 'path';
 import { existsSync } from 'fs';
+import { config } from 'dotenv';
+
+// ✅ FIX: Load environment variables
+config();
 
 async function setupChromeProfile() {
+  // ✅ FIX: Read extension ID from environment (no hardcoded fallback)
+  const extensionId = process.env.AUTO_WHISK_EXTENSION_ID;
+  if (!extensionId) {
+    console.error('❌ AUTO_WHISK_EXTENSION_ID not configured in .env file');
+    console.error('   Add AUTO_WHISK_EXTENSION_ID=gcgblhgncmhjchllkcpcneeibddhmbbe to your .env file.');
+    process.exit(1);
+  }
   console.log('\n🔧 ========================================');
   console.log('🔧 ONE-TIME CHROME SETUP');
   console.log('🔧 ========================================\n');
@@ -74,7 +85,7 @@ async function setupChromeProfile() {
   const chromeArgs = [
     `--user-data-dir=${automationProfilePath}`,
     '--new-window',
-    'https://chromewebstore.google.com/detail/auto-whisk-nano-banana-im/gedfnhdibkfgacmkbjgpfjihacalnlpn'
+    `https://chromewebstore.google.com/detail/auto-whisk-nano-banana-im/${extensionId}`
   ];
 
   console.log('🚀 Launching Chrome...\n');

@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "Whisk Token Manager",
+  "version": "1.0.0",
+  "description": "Automatically captures Whisk OAuth tokens and sends to local backend",
+  "permissions": [
+    "webRequest",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://aisandbox-pa.googleapis.com/*",
+    "https://labs.google/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}

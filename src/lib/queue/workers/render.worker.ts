@@ -11,6 +11,8 @@ import { WordTimestamp, SceneSentenceInfo } from '../../remotion/types';
 import { ensureContinuousCoverageSimple } from '../../transcription/sentence-matcher';
 import { prepareRenderAssets } from '../../remotion/asset-preparation';
 import { validateSceneQuality } from '../../video/quality-check';
+import { verifyFFmpegInstallation, validateMP4Format } from '../../remotion/video-utils';
+import { checkDiskSpace } from '../../storage/local';
 
 interface RenderJobData {
   jobId: string;
@@ -30,11 +32,11 @@ export const renderWorker = new Worker<RenderJobData>(
     console.log(`\n🎬 [RENDER] Starting render for job ${jobId}`);
 
     try {
-      // 1. Fetch job data
+      // 1. Fetch job data and validate state
       console.log(`📋 [RENDER] Fetching job data...`);
 
       const jobResult = await db.query(
-        'SELECT id, avatar_mp4_url, word_timestamps FROM news_jobs WHERE id = $1',
+        'SELECT id, status, avatar_mp4_url, word_timestamps FROM news_jobs WHERE id = $1',
         [jobId]
       );
 
@@ -42,11 +44,33 @@ export const renderWorker = new Worker<RenderJobData>(
         throw new Error('Job not found');
       }
 
-      const { avatar_mp4_url, word_timestamps } = jobResult.rows[0];
+      const { status, avatar_mp4_url, word_timestamps } = jobResult.rows[0];
+
+      // CRITICAL: Validate job is in rendering state
+      // This prevents wasting 20+ minutes rendering cancelled or failed jobs
+      if (status !== 'rendering') {
+        throw new Error(
+          `Job must be in 'rendering' state to render (currently: ${status}). ` +
+          `This job may have been cancelled or already completed.`
+        );
+      }
+
+      console.log(`✅ [RENDER] Job state validated: ${status}`);
 
       if (!avatar_mp4_url) {
         throw new Error('Avatar MP4 path not found. Upload avatar first.');
       }
+
+      // CRITICAL FIX #25: Pre-flight disk space check
+      console.log(`💾 [RENDER] Checking disk space...`);
+      const diskSpace = checkDiskSpace(500); // Require 500MB free
+      if (!diskSpace.available) {
+        throw new Error(
+          `Insufficient disk space for render. Available: ${diskSpace.availableMB}MB, Required: ${diskSpace.requiredMB}MB. ` +
+          `Please free up space at: ${diskSpace.path}`
+        );
+      }
+      console.log(`✅ [RENDER] Disk space OK: ${diskSpace.availableMB}MB available`);
 
       // 2. Fetch scenes (with timing data for database-driven pacing)
       const scenesResult = await db.query(
@@ -72,32 +96,6 @@ export const renderWorker = new Worker<RenderJobData>(
       }
 
       console.log(`✅ [RENDER] Job data loaded: ${scenes.length} scenes`);
-
-      // CRITICAL: Validate and prepare assets before rendering
-      // This copies images from storage to public folder where Remotion can access them
-      console.log(`\n🔍 [RENDER] Validating and preparing assets...`);
-
-      const assetValidation = await prepareRenderAssets(jobId, scenes, avatar_mp4_url);
-
-      if (!assetValidation.valid) {
-        // Build detailed error message
-        const errors = [
-          ...assetValidation.missingImages.map(id => `Scene ${id}: image file not found in storage`),
-          ...assetValidation.invalidPaths.map(p => `Invalid or inaccessible path: ${p}`),
-          ...assetValidation.copyErrors.map(e => `Failed to prepare scene ${e.sceneId}: ${e.error}`),
-        ];
-
-        if (assetValidation.avatarError) {
-          errors.push(`Avatar error: ${assetValidation.avatarError}`);
-        }
-
-        const errorMessage = `Asset validation failed:\n${errors.join('\n')}`;
-        console.error(`❌ [RENDER] ${errorMessage}`);
-
-        throw new Error(errorMessage);
-      }
-
-      console.log(`✅ [RENDER] All assets validated and prepared for rendering`);
 
       // 3. Check if we have stored timing data (preferred method)
       const hasStoredTiming = scenes.every(s => s.word_start_time !== null && s.word_end_time !== null);
@@ -140,6 +138,36 @@ export const renderWorker = new Worker<RenderJobData>(
       if (hasStoredTiming) {
         // FAST PATH: Use stored timing from database (no matching needed!)
         console.log(`🚀 [RENDER] Using stored timing from database (O(1) lookup)`);
+
+        // CRITICAL FIX (Bug #28): Validate stored timing data before use
+        // This prevents using corrupt database timing that causes render failures
+        const invalidScenes: string[] = [];
+
+        for (let i = 0; i < scenes.length; i++) {
+          const scene = scenes[i];
+          const start = scene.word_start_time!;
+          const end = scene.word_end_time!;
+
+          // Validate timing bounds
+          if (start < 0 || end < 0) {
+            invalidScenes.push(`Scene ${i}: negative timestamp (start=${start}, end=${end})`);
+          } else if (start >= end) {
+            invalidScenes.push(`Scene ${i}: start >= end (start=${start}, end=${end})`);
+          } else if (end > avatarDurationSeconds + 1) { // Allow 1s tolerance
+            invalidScenes.push(`Scene ${i}: end time exceeds avatar duration (end=${end}, avatar=${avatarDurationSeconds})`);
+          }
+        }
+
+        if (invalidScenes.length > 0) {
+          console.error(`❌ [RENDER] Invalid stored timing detected:`);
+          invalidScenes.forEach(err => console.error(`   - ${err}`));
+          throw new Error(
+            `Database timing validation failed for ${invalidScenes.length} scene(s). ` +
+            `Timing data may be corrupt. Please regenerate the job.`
+          );
+        }
+
+        console.log(`✅ [RENDER] Stored timing validated (all scenes within bounds)`);
 
         const sceneTiming = scenes.map((scene, i) => ({
           sceneId: `scene_${i}`,
@@ -201,7 +229,8 @@ export const renderWorker = new Worker<RenderJobData>(
       console.log(`   Body scenes: ${pacing.bodyScenes}`);
       console.log(`   Total duration: ${pacing.totalDurationInSeconds.toFixed(2)}s (${pacing.totalDurationInFrames} frames)`);
 
-      // Run quality checks
+      // CRITICAL FIX (Bug #24): Run quality checks BEFORE asset preparation
+      // This prevents wasting time preparing assets for videos with bad pacing
       const qualityCheck = validateSceneQuality(scenes, pacing.sceneTiming, pacing.totalDurationInFrames, 30);
 
       if (!qualityCheck.passed) {
@@ -216,6 +245,32 @@ export const renderWorker = new Worker<RenderJobData>(
       } else {
         console.log(`✅ [RENDER] Quality check passed - no issues detected`);
       }
+
+      // CRITICAL: Validate and prepare assets AFTER quality check passes
+      // This copies images from storage to public folder where Remotion can access them
+      console.log(`\n🔍 [RENDER] Validating and preparing assets...`);
+
+      const assetValidation = await prepareRenderAssets(jobId, scenes, avatar_mp4_url);
+
+      if (!assetValidation.valid) {
+        // Build detailed error message
+        const errors = [
+          ...assetValidation.missingImages.map(id => `Scene ${id}: image file not found in storage`),
+          ...assetValidation.invalidPaths.map(p => `Invalid or inaccessible path: ${p}`),
+          ...assetValidation.copyErrors.map(e => `Failed to prepare scene ${e.sceneId}: ${e.error}`),
+        ];
+
+        if (assetValidation.avatarError) {
+          errors.push(`Avatar error: ${assetValidation.avatarError}`);
+        }
+
+        const errorMessage = `Asset validation failed:\n${errors.join('\n')}`;
+        console.error(`❌ [RENDER] ${errorMessage}`);
+
+        throw new Error(errorMessage);
+      }
+
+      console.log(`✅ [RENDER] All assets validated and prepared for rendering`);
 
       // Transcribe avatar for word timestamps (if not already done)
 
@@ -328,6 +383,22 @@ export const renderWorker = new Worker<RenderJobData>(
       console.log(`✅ [RENDER] Video rendered to temp location: ${renderResult.outputPath}`);
       console.log(`   Size: ${(renderResult.sizeInBytes / 1024 / 1024).toFixed(2)} MB`);
       console.log(`   Render time: ${(renderTimeMs / 1000).toFixed(1)}s`);
+
+      // CRITICAL: Validate MP4 output format (Bug #18 fix)
+      // This prevents marking corrupted/partial MP4 files as successful
+      console.log(`\n🔍 [RENDER] Validating MP4 output format...`);
+      const mp4Validation = await validateMP4Format(renderResult.outputPath);
+
+      if (!mp4Validation.valid) {
+        throw new Error(
+          `Rendered MP4 is invalid or corrupted: ${mp4Validation.error}. ` +
+          `The render completed but produced an unplayable video file.`
+        );
+      }
+
+      console.log(`✅ [RENDER] MP4 validation passed`);
+      console.log(`   Format: Valid MP4 (ftyp signature present)`);
+      console.log(`   Duration: ${mp4Validation.durationSeconds?.toFixed(2)}s`);
 
       // Add completion log
       await db.query(
@@ -512,6 +583,14 @@ export const renderWorker = new Worker<RenderJobData>(
     },
   }
 );
+
+// CRITICAL FIX #23: Verify FFmpeg is installed before processing jobs
+const ffmpegCheck = verifyFFmpegInstallation();
+if (!ffmpegCheck.success) {
+  console.error(`\n⛔ [RENDER] CRITICAL: ${ffmpegCheck.error}`);
+  console.error(`⛔ [RENDER] Render worker will NOT process jobs until FFmpeg is installed.\n`);
+  process.exit(1); // Fail fast - don't start worker without FFmpeg
+}
 
 renderWorker.on('completed', (job) => {
   console.log(`✅ [RENDER] Worker completed job ${job.id}`);

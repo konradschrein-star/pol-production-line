@@ -1,4 +1,4 @@
-import { existsSync, statSync, copyFileSync, mkdirSync, createReadStream } from 'fs';
+import { existsSync, statSync, copyFileSync, mkdirSync, createReadStream, createWriteStream, renameSync } from 'fs';
 import { join, basename, normalize, isAbsolute } from 'path';
 import { resolveStoragePath } from '../storage/path-resolver';
 
@@ -49,17 +49,26 @@ export async function prepareRenderAssets(
   };
 
   // Ensure public/images and public/avatars directories exist
+  // Use try-catch to handle race conditions when multiple jobs run concurrently
   const publicImagesDir = join(process.cwd(), 'public', 'images');
   const publicAvatarsDir = join(process.cwd(), 'public', 'avatars');
 
-  if (!existsSync(publicImagesDir)) {
-    console.log(`📁 [ASSET-PREP] Creating public images directory: ${publicImagesDir}`);
+  try {
     mkdirSync(publicImagesDir, { recursive: true });
+    console.log(`📁 [ASSET-PREP] Ensured public images directory exists: ${publicImagesDir}`);
+  } catch (error: any) {
+    if (error.code !== 'EEXIST') {
+      throw new Error(`Failed to create public images directory: ${error.message}`);
+    }
   }
 
-  if (!existsSync(publicAvatarsDir)) {
-    console.log(`📁 [ASSET-PREP] Creating public avatars directory: ${publicAvatarsDir}`);
+  try {
     mkdirSync(publicAvatarsDir, { recursive: true });
+    console.log(`📁 [ASSET-PREP] Ensured public avatars directory exists: ${publicAvatarsDir}`);
+  } catch (error: any) {
+    if (error.code !== 'EEXIST') {
+      throw new Error(`Failed to create public avatars directory: ${error.message}`);
+    }
   }
 
   // 1. Validate and copy scene images
@@ -91,7 +100,14 @@ export async function prepareRenderAssets(
       continue;
     }
 
-    console.log(`   ✅ File exists (${validationResult.sizeKB?.toFixed(2)} KB)`);
+    console.log(`   ✅ File exists (${validationResult.sizeKB?.toFixed(2) || 'N/A'} KB)`);
+
+    // Skip copying for data URLs (they're embedded, not files)
+    if (imageUrl.startsWith('data:')) {
+      console.log(`   ℹ️  Data URL - no copy needed`);
+      result.details.push(`Scene ${sceneId}: Data URL (embedded)`);
+      continue;
+    }
 
     // Extract filename and copy to public folder
     try {
@@ -107,7 +123,7 @@ export async function prepareRenderAssets(
       await copyImageToPublic(imageUrl, destPath);
 
       console.log(`   ✅ Copied to: public/images/${filename}`);
-      result.details.push(`Scene ${sceneId}: Prepared successfully`);
+      result.details.push(`Scene ${sceneId}: Prepared successfully (${validationResult.sizeKB?.toFixed(2)} KB)`);
 
     } catch (error) {
       result.valid = false;
@@ -122,7 +138,7 @@ export async function prepareRenderAssets(
   console.log(`\n🎭 [ASSET-PREP] Validating avatar file...`);
   console.log(`   Source: ${avatarMp4Url}`);
 
-  const avatarValidation = await validateImageFile(avatarMp4Url);
+  const avatarValidation = await validateImageFile(avatarMp4Url, true);
   if (!avatarValidation.valid) {
     result.valid = false;
     result.avatarError = avatarValidation.error;
@@ -177,6 +193,8 @@ export async function prepareRenderAssets(
 
 /**
  * Copy image from storage location to public folder
+ * Uses streaming for large files (>10MB) to prevent OOM errors (Bug #9 fix)
+ * Uses atomic operations (write-to-temp-then-rename) to prevent corruption (Bug #11 fix)
  */
 async function copyImageToPublic(sourcePath: string, destPath: string): Promise<void> {
   try {
@@ -185,16 +203,63 @@ async function copyImageToPublic(sourcePath: string, destPath: string): Promise<
       ? sourcePath
       : resolveStoragePath(sourcePath);
 
-    copyFileSync(resolvedSource, destPath);
+    // ATOMIC OPERATION (Bug #11 fix): Write to temp file, then rename
+    // This prevents corruption if multiple workers copy the same file concurrently
+    const tempPath = `${destPath}.tmp.${Date.now()}.${Math.random().toString(36).substring(7)}`;
+
+    // Check file size to determine copy method
+    const stats = statSync(resolvedSource);
+    const fileSizeMB = stats.size / (1024 * 1024);
+    const STREAMING_THRESHOLD_MB = 10;
+
+    if (fileSizeMB > STREAMING_THRESHOLD_MB) {
+      // Large file: Use streaming copy to avoid loading entire file into memory
+      console.log(`   Using streaming copy for large file (${fileSizeMB.toFixed(2)} MB)...`);
+      await streamCopyFile(resolvedSource, tempPath);
+    } else {
+      // Small file: Use synchronous copy (faster for small files)
+      copyFileSync(resolvedSource, tempPath);
+    }
+
+    // Atomic rename: If destination already exists, this will overwrite it atomically
+    // This is safe because rename is an atomic filesystem operation
+    renameSync(tempPath, destPath);
+
   } catch (error) {
     throw new Error(`Failed to copy file: ${error instanceof Error ? error.message : String(error)}`);
   }
 }
 
 /**
- * Validate that an image/video file exists and is readable
+ * Stream copy a file (for large files)
+ * Prevents out-of-memory errors by using streams instead of loading entire file
  */
-async function validateImageFile(path: string): Promise<{
+async function streamCopyFile(sourcePath: string, destPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const readStream = createReadStream(sourcePath);
+    const writeStream = createWriteStream(destPath);
+
+    readStream.on('error', (error) => {
+      reject(new Error(`Read stream error: ${error.message}`));
+    });
+
+    writeStream.on('error', (error) => {
+      reject(new Error(`Write stream error: ${error.message}`));
+    });
+
+    writeStream.on('finish', () => {
+      resolve();
+    });
+
+    readStream.pipe(writeStream);
+  });
+}
+
+/**
+ * Validate that an image/video file exists and is readable
+ * @param isAvatar - If true, uses more lenient size validation for test fixtures
+ */
+async function validateImageFile(path: string, isAvatar = false): Promise<{
   valid: boolean;
   error?: string;
   sizeKB?: number;
@@ -245,16 +310,35 @@ async function validateImageFile(path: string): Promise<{
       };
     }
 
-    // Environment-aware file size validation
-    // Test mode: Allow tiny fixtures (≥1 byte) for fast tests
-    // Production: Require ≥1KB to catch corrupted/incomplete files
-    const isTestMode = process.env.NODE_ENV === 'test';
-    const minSizeKB = isTestMode ? 0.001 : 1;
+    // Validate file extension (unless it's an avatar which may be .mp4)
+    if (!isAvatar) {
+      const validExtensions = ['.jpg', '.jpeg', '.png', '.webp'];
+      const hasValidExtension = validExtensions.some(ext => normalizedPath.toLowerCase().endsWith(ext));
 
+      if (!hasValidExtension) {
+        return {
+          valid: false,
+          error: `Invalid file extension. Expected: ${validExtensions.join(', ')}. Path: ${normalizedPath}`,
+        };
+      }
+    }
+
+    // Environment-aware file size validation:
+    // - Test mode: Accept any file >0 bytes (allows test fixtures)
+    // - Production: Require ≥10KB for images (catches corrupt/incomplete files)
+    const isTestMode = process.env.NODE_ENV === 'test';
+
+    // In test mode, only reject completely empty files
+    if (isTestMode) {
+      return { valid: true, sizeKB };
+    }
+
+    // In production, enforce minimum 10KB size (corrupt images can be 1-50KB)
+    const minSizeKB = isAvatar ? 1 : 10;
     if (sizeKB < minSizeKB) {
       return {
         valid: false,
-        error: `File is suspiciously small (${sizeKB.toFixed(2)} KB): ${normalizedPath}`,
+        error: `File is suspiciously small (${sizeKB.toFixed(2)} KB, minimum ${minSizeKB} KB): ${normalizedPath}`,
       };
     }
 
@@ -316,22 +400,35 @@ async function preloadAvatarFile(filePath: string): Promise<void> {
     let bytesRead = 0;
     const preloadLimit = 10 * 1024 * 1024; // Read first 10MB
 
+    // 30-second timeout to prevent indefinite hangs on I/O issues
+    const timeout = setTimeout(() => {
+      stream.destroy();
+      reject(new Error(`Avatar preload timeout after 30 seconds. File: ${filePath}`));
+    }, 30000);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+      stream.destroy();
+    };
+
     stream.on('data', (chunk) => {
       bytesRead += chunk.length;
 
       // Stop after reading 10MB (enough to verify file is accessible)
       if (bytesRead >= preloadLimit) {
-        stream.destroy();
+        cleanup();
         resolve();
       }
     });
 
     stream.on('end', () => {
       // File is smaller than 10MB, fully read
+      cleanup();
       resolve();
     });
 
     stream.on('error', (error) => {
+      cleanup();
       reject(new Error(`Avatar preload failed: ${error.message}`));
     });
   });

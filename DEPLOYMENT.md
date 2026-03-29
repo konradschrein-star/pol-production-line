@@ -67,7 +67,7 @@ WHISK_IMAGE_MODEL=IMAGEN_3_5
 **Optional:**
 ```
 # Browser Automation
-AUTO_WHISK_EXTENSION_ID=gedfnhdibkfgacmkbjgpfjihacalnlpn
+AUTO_WHISK_EXTENSION_ID=gcgblhgncmhjchllkcpcneeibddhmbbe
 DEFAULT_BROWSER=chrome
 
 # HeyGen

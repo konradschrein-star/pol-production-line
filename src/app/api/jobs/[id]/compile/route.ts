@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { saveBuffer } from '@/lib/storage/local';
+import { saveBuffer, checkDiskSpace, resolveFilePath } from '@/lib/storage/local';
+import { existsSync } from 'fs';
 import { queueRender } from '@/lib/queue/queues';
 import { ErrorCode, createErrorResponse, logError } from '@/lib/errors/error-codes';
 import { transcribeAudio } from '@/lib/audio/transcribe';
@@ -74,6 +75,48 @@ export async function POST(
       );
     }
 
+    // CRITICAL: Validate image files exist on disk (Bug #27 fix)
+    // This prevents discovering missing files 20+ minutes later during render
+    console.log(`🔍 [API] Validating scene image files exist on disk...`);
+
+    const scenesWithImagesResult = await db.query(
+      'SELECT id, scene_order, image_url FROM news_scenes WHERE job_id = $1 AND image_url IS NOT NULL ORDER BY scene_order',
+      [id]
+    );
+
+    const missingScenes: Array<{ id: string; scene_order: number; path: string }> = [];
+
+    for (const scene of scenesWithImagesResult.rows) {
+      const imagePath = resolveFilePath(scene.image_url);
+
+      if (!existsSync(imagePath)) {
+        missingScenes.push({
+          id: scene.id,
+          scene_order: scene.scene_order,
+          path: scene.image_url,
+        });
+      }
+    }
+
+    if (missingScenes.length > 0) {
+      console.error(`❌ [API] ${missingScenes.length} scene image files not found on disk`);
+      missingScenes.forEach(scene => {
+        console.error(`   Scene ${scene.scene_order}: ${scene.path}`);
+      });
+
+      return NextResponse.json(
+        {
+          error: 'Scene image files not found on disk',
+          missing_scenes: missingScenes,
+          total_missing: missingScenes.length,
+          hint: 'Some images were deleted from storage or failed to generate. Please regenerate the missing scenes.',
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`✅ [API] All ${scenesWithImagesResult.rows.length} scene images verified on disk`);
+
     // Check if avatar already exists in database
     const existingAvatarResult = await db.query(
       'SELECT avatar_mp4_url FROM news_jobs WHERE id = $1',
@@ -126,6 +169,18 @@ export async function POST(
       });
     }
 
+    // Explicit null check for type safety (TypeScript flow analysis doesn't narrow properly)
+    if (!avatarFile) {
+      logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, 'Avatar file is unexpectedly null');
+      return NextResponse.json(
+        createErrorResponse(
+          ErrorCode.AVATAR_UPLOAD_FAILED,
+          'Avatar file is unexpectedly null. Please try uploading again.'
+        ),
+        { status: 400 }
+      );
+    }
+
     // Validate file type (MIME type check)
     if (avatarFile.type !== 'video/mp4') {
       logError('API/Compile', ErrorCode.AVATAR_UPLOAD_FAILED, `Invalid MIME type: ${avatarFile.type}`);
@@ -152,7 +207,23 @@ export async function POST(
       );
     }
 
+    // CRITICAL: Check disk space before accepting upload (Bug #8 fix)
+    // Prevents ENOSPC errors that crash workers mid-job
+    const diskSpaceCheck = checkDiskSpace(500); // Require 500MB free
+    if (!diskSpaceCheck.available) {
+      logError('API/Compile', ErrorCode.STORAGE_ERROR, `Insufficient disk space: ${diskSpaceCheck.availableMB}MB available`);
+      return NextResponse.json(
+        createErrorResponse(
+          ErrorCode.STORAGE_ERROR,
+          `Insufficient disk space. Available: ${diskSpaceCheck.availableMB.toFixed(0)}MB, Required: ${diskSpaceCheck.requiredMB}MB. ` +
+          `Please free up space on ${diskSpaceCheck.path}`
+        ),
+        { status: 507 } // 507 Insufficient Storage
+      );
+    }
+
     console.log(`📦 [API] Saving avatar: ${avatarFile.name} (${(avatarFile.size / 1024 / 1024).toFixed(2)} MB)`);
+    console.log(`💾 [API] Disk space: ${diskSpaceCheck.availableMB.toFixed(0)}MB available`);
 
     // Convert File to Buffer
     const arrayBuffer = await avatarFile.arrayBuffer();

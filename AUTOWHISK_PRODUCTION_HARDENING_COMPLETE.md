@@ -134,7 +134,7 @@ R2_PUBLIC_URL=...
 **Ensure these exist:**
 ```bash
 # Auto Whisk Extension
-AUTO_WHISK_EXTENSION_ID=gedfnhdibkfgacmkbjgpfjihacalnlpn
+AUTO_WHISK_EXTENSION_ID=gcgblhgncmhjchllkcpcneeibddhmbbe
 
 # Persistent context for Google login
 PLAYWRIGHT_USER_DATA_DIR=./playwright-data
@@ -245,7 +245,7 @@ npm run workers
 
 ### Ban Detection (If Triggered)
 ```
-🔍 [BanDetect] Checking page: chrome-extension://gedfnhdibkfgacmkbjgpfjihacalnlpn/index.html
+🔍 [BanDetect] Checking page: chrome-extension://gcgblhgncmhjchllkcpcneeibddhmbbe/index.html
 ⚠️ [BanDetect] CAPTCHA DETECTED
 ❌ [IMAGES] Scene xyz789 failed (attempt 1/3): Cannot generate images: Captcha challenge detected - manual verification required (captcha)
 ⚠️ [IMAGES] PAUSING QUEUE: Google login/captcha required

@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { queueImages } from '@/lib/queue/queues';
+import { sceneIdParamsSchema, validateParams, formatValidationErrors } from '@/lib/validation/schemas';
+import { z } from 'zod';
 
 /**
  * POST /api/jobs/[id]/scenes/[scene_id]/regenerate
  * Re-queue a scene for image generation
+ * PRODUCTION HARDENING (Bug #15 fix): Added UUID validation
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string; scene_id: string } }
 ) {
   try {
-    const { id, scene_id } = params;
+    // PRODUCTION HARDENING: Validate UUID parameters (Bug #15 fix)
+    const { id, scene_id } = validateParams(sceneIdParamsSchema, params);
 
     console.log(`🔄 [API] Regenerating image for scene ${scene_id}...`);
 
@@ -71,6 +75,11 @@ export async function POST(
     });
 
   } catch (error: unknown) {
+    // PRODUCTION HARDENING: Handle validation errors
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(formatValidationErrors(error), { status: 400 });
+    }
+
     console.error('❌ [API] Error regenerating scene:', error);
 
     return NextResponse.json(

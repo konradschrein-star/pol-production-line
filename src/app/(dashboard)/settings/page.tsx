@@ -160,7 +160,7 @@ export default function SettingsPage() {
       setRedisPort(data.REDIS_PORT || '6379');
       setRedisPassword(data.REDIS_PASSWORD || '');
       setDefaultBrowser(data.DEFAULT_BROWSER || 'edge');
-      setAutoWhiskExtId(data.AUTO_WHISK_EXTENSION_ID || 'gedfnhdibkfgacmkbjgpfjihacalnlpn');
+      setAutoWhiskExtId(data.AUTO_WHISK_EXTENSION_ID || 'gcgblhgncmhjchllkcpcneeibddhmbbe');
       setAvatarMode(data.AVATAR_MODE || 'manual');
       setHeygenProfilePath(data.HEYGEN_PROFILE_PATH || './integrations/heygen-automation/heygen-chrome-profile');
       setPythonExecutable(data.PYTHON_EXECUTABLE || 'python');
@@ -660,7 +660,7 @@ export default function SettingsPage() {
                 type="text"
                 value={autoWhiskExtId}
                 onChange={(e) => setAutoWhiskExtId(e.target.value)}
-                placeholder="gedfnhdibkfgacmkbjgpfjihacalnlpn"
+                placeholder="gcgblhgncmhjchllkcpcneeibddhmbbe"
               />
               <p className="text-xs text-on-surface-variant mt-2">
                 Default ID works for most users. Only change if you have a custom version.

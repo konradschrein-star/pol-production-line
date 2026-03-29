@@ -1,6 +1,7 @@
 'use client';
 
 import Icon from '@/components/ui/Icon';
+import { NotificationBell } from '@/components/system/NotificationBell';
 
 export function TopNavBar() {
   return (
@@ -20,9 +21,9 @@ export function TopNavBar() {
 
       {/* Right actions */}
       <div className="flex items-center gap-4">
-        <button className="p-2 hover:bg-surface-container transition-colors">
-          <Icon name="notifications" size="md" className="text-on-surface-variant" />
-        </button>
+        {/* Live Notification Bell */}
+        <NotificationBell />
+
         <button className="p-2 hover:bg-surface-container transition-colors">
           <Icon name="terminal" size="md" className="text-on-surface-variant" />
         </button>

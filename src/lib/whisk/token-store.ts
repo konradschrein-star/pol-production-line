@@ -78,6 +78,14 @@ export class WhiskTokenStore {
   }
 
   /**
+   * Clear the token cache (useful for testing)
+   */
+  static clearCache(): void {
+    this.currentToken = null;
+    this.lastRefreshTime = null;
+  }
+
+  /**
    * Get time in milliseconds until token is expected to expire
    * Returns negative number if already expired
    */

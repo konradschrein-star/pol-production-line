@@ -9,8 +9,15 @@ import { detectBan } from './ban-detection';
  */
 export async function navigateToAutoWhisk(page: Page): Promise<void> {
   try {
-    const extensionId = process.env.AUTO_WHISK_EXTENSION_ID || 'gedfnhdibkfgacmkbjgpfjihacalnlpn';
-    const extensionUrl = `chrome-extension://${extensionId}/gateway.html`;
+    // ✅ FIX: Extension ID must be configured (no unsafe fallback)
+    const extensionId = process.env.AUTO_WHISK_EXTENSION_ID;
+    if (!extensionId) {
+      throw new Error(
+        'AUTO_WHISK_EXTENSION_ID not configured. ' +
+        'Add AUTO_WHISK_EXTENSION_ID=gcgblhgncmhjchllkcpcneeibddhmbbe to your .env file.'
+      );
+    }
+    const extensionUrl = `chrome-extension://${extensionId}/popup-enhanced-fixed.html`;
 
     console.log(`🔗 [AutoWhisk] Opening extension as normal tab...`);
 

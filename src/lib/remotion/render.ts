@@ -111,7 +111,8 @@ export async function renderNewsVideo(jobData: RenderJobData): Promise<RenderRes
 
     const compositions = await getCompositions(bundleLocation, {
       inputProps,
-      timeoutInMilliseconds: 300000, // 5 min timeout for loading large videos (40+ min avatars can be 200-400MB)
+      timeoutInMilliseconds: 600000, // 10 min timeout for loading large videos (40+ min avatars can be 200-400MB)
+                                      // Increased from 5min to prevent timeout on large avatars (Bug #19 fix)
     });
 
     console.log(`   Found ${compositions.length} compositions`);
@@ -205,7 +206,8 @@ async function performRender(
     outputLocation: outputPath,
     inputProps: composition.defaultProps,
     concurrency: parseInt(process.env.REMOTION_CONCURRENCY || '4'),
-    timeoutInMilliseconds: 300000, // 5 min timeout for loading large videos (40+ min avatars can be 200-400MB)
+    timeoutInMilliseconds: 600000, // 10 min timeout for loading large videos (40+ min avatars can be 200-400MB)
+                                     // Increased from 5min to prevent timeout on large avatars (Bug #19 fix)
     publicDir: join(process.cwd(), 'public'), // CRITICAL: Specify public directory for staticFile()
     onProgress: ({ progress, renderedFrames }) => {
       const percent = (progress * 100).toFixed(1);

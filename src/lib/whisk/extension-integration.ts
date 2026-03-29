@@ -19,9 +19,40 @@ import axios from 'axios';
 
 const execAsync = promisify(exec);
 
-const EXTENSION_ID = 'gedfnhdibkfgacmkbjgpfjihacalnlpn'; // Chrome extension ID
-const BACKEND_URL = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:8347';
-const TOKEN_API_ENDPOINT = `${BACKEND_URL}/api/whisk/token`;
+/**
+ * Lazy validation: Get extension ID from environment
+ * Only validates when actually needed (not at module load time)
+ */
+function getExtensionId(): string {
+  const extensionId = process.env.AUTO_WHISK_EXTENSION_ID;
+  if (!extensionId) {
+    throw new Error(
+      'AUTO_WHISK_EXTENSION_ID not configured. ' +
+      'Add AUTO_WHISK_EXTENSION_ID=gcgblhgncmhjchllkcpcneeibddhmbbe to your .env file.'
+    );
+  }
+  return extensionId;
+}
+
+/**
+ * Lazy validation: Get backend URL from environment
+ * Only validates when actually needed (not at module load time)
+ */
+function getBackendUrl(): string {
+  const backendUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!backendUrl) {
+    // Allow localhost fallback only in development
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        'NEXT_PUBLIC_APP_URL not configured for production. ' +
+        'Set NEXT_PUBLIC_APP_URL in .env (e.g., https://your-domain.com)'
+      );
+    }
+    console.warn('⚠️  NEXT_PUBLIC_APP_URL not set, using localhost (development only)');
+    return 'http://localhost:8347';
+  }
+  return backendUrl;
+}
 
 export interface ExtensionRefreshResult {
   success: boolean;
@@ -47,9 +78,9 @@ export async function triggerExtensionRefresh(timeout: number = 15000): Promise<
   console.log('🔄 [Extension Integration] Triggering extension token refresh...');
 
   try {
-    // Trigger extension via chrome:// URL (opens extension popup)
+    // Trigger extension via chrome:// URL (opens extension side panel)
     // The extension will detect this and start the refresh process
-    const extensionUrl = `chrome-extension://${EXTENSION_ID}/popup-enhanced-fixed.html?action=refresh`;
+    const extensionUrl = `chrome-extension://${getExtensionId()}/popup-enhanced-fixed.html?action=refresh`;
 
     // Launch Chrome with extension URL (user's default Chrome profile)
     // This will open the extension popup and trigger the refresh
@@ -134,7 +165,7 @@ export async function sendExtensionMessage(message: any): Promise<any> {
 export async function isExtensionAvailable(): Promise<boolean> {
   try {
     // Try to fetch extension status endpoint
-    const response = await axios.get(`${BACKEND_URL}/api/whisk/extension-status`, {
+    const response = await axios.get(`${getBackendUrl()}/api/whisk/extension-status`, {
       timeout: 2000,
     });
 

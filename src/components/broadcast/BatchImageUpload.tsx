@@ -354,14 +354,14 @@ export function BatchImageUpload({ jobId, scenes, onComplete }: BatchImageUpload
               ) : (
                 <div className="flex flex-col items-center justify-center h-full bg-surface-container-lowest text-on-surface-variant">
                   <Icon name="image" size="lg" className="mb-2" />
-                  <div className="text-xs">Scene {slot.sceneOrder}</div>
+                  <div className="text-xs">Scene {slot.sceneOrder + 1}</div>
                 </div>
               )}
             </div>
 
             {/* Scene Label */}
             <div className="mt-2 text-xs text-on-surface-variant truncate">
-              Scene {slot.sceneOrder}
+              Scene {slot.sceneOrder + 1}
             </div>
 
             {/* Error Message */}

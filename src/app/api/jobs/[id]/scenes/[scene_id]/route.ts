@@ -46,7 +46,7 @@ export async function PATCH(
 
     // Build dynamic update query
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: (string | number | boolean)[] = [];
     let paramIndex = 1;
 
     if (ticker_headline) {

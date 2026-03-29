@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
@@ -10,6 +10,7 @@ import { updateScene, regenerateScene, uploadSceneImage } from '@/lib/utils/api'
 import { WhiskReferenceImages } from '@/lib/whisk/types';
 import { useToast } from '@/lib/hooks/useToast';
 import { ToastContainer } from '@/components/common/ToastContainer';
+import { SceneErrorPanel } from './SceneErrorPanel';
 
 interface Scene {
   id: string;
@@ -28,6 +29,11 @@ interface Scene {
   narrative_position?: 'opening' | 'development' | 'evidence' | 'conclusion';
   shot_type?: 'establishing' | 'medium' | 'closeup' | 'detail';
   visual_continuity_notes?: string;
+  // Error tracking fields (Phase 1)
+  error_category?: 'policy_violation' | 'timeout' | 'api_error' | 'rate_limit' | 'auth_error' | 'unknown';
+  error_message?: string;
+  sanitization_attempts?: number;
+  last_error_code?: string;
 }
 
 interface SceneCardProps {
@@ -85,7 +91,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
     }
   };
 
-  const handleRegenerate = async () => {
+  const handleRegenerate = useCallback(async () => {
     if (!confirm('Regenerate this scene image? This will queue a new generation.'))
       return;
 
@@ -98,7 +104,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
     } finally {
       setRegenerating(false);
     }
-  };
+  }, [scene.job_id, scene.id, onUpdate]);
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -225,7 +231,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
     const handleEditEvent = (e: Event) => {
       const customEvent = e as CustomEvent;
       if (customEvent.detail?.sceneId === scene.id) {
-        setEditing(true);
+        setEditingHeadline(true);
       }
     };
 
@@ -238,7 +244,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
       window.removeEventListener('uploadSceneImage', handleUploadEvent);
       window.removeEventListener('editSceneHeadline', handleEditEvent);
     };
-  }, [scene.id]);
+  }, [scene.id, handleRegenerate]);
 
   return (
     <Card
@@ -254,7 +260,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
         {scene.image_url ? (
           <img
             src={`/api/files?path=${encodeURIComponent(scene.image_url)}`}
-            alt={`Scene ${scene.scene_order}`}
+            alt={`Scene ${scene.scene_order + 1}`}
             className="w-full h-full object-cover"
           />
         ) : (
@@ -281,7 +287,7 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
         {/* Scene Number Badge */}
         <div className="absolute top-3 left-3 bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-lg">
           <span className="text-xs font-semibold text-white">
-            Scene {scene.scene_order}
+            Scene {scene.scene_order + 1}
           </span>
         </div>
 
@@ -329,6 +335,19 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
       </div>
 
       <div className="p-6 space-y-5">
+        {/* Error Panel - Displayed for failed scenes */}
+        {scene.generation_status === 'failed' && scene.error_category && (
+          <SceneErrorPanel
+            sceneId={scene.id}
+            jobId={scene.job_id}
+            errorCategory={scene.error_category}
+            errorMessage={scene.error_message}
+            sanitizationAttempts={scene.sanitization_attempts}
+            onEditAndRetry={() => setEditingPrompt(true)}
+            onUploadImage={handleUploadClick}
+          />
+        )}
+
         {/* Sentence Text (NEW) */}
         {scene.sentence_text && (
           <div className="bg-surface-container-low border border-outline-variant/40 rounded-lg p-4">
@@ -466,17 +485,45 @@ export function SceneCard({ scene, onUpdate, isSelected = false }: SceneCardProp
 
         {/* Actions */}
         <div className="flex gap-3 pt-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={handleRegenerate}
-            disabled={regenerating || scene.generation_status === 'generating'}
-            className="flex-1"
-            title="Re-queue scene for generation. ⚠️ Warning: >5 regenerations in 5 minutes may trigger ban detection"
-          >
-            <Icon name="refresh" size="sm" />
-            {regenerating ? 'Regenerating...' : 'Regenerate'}
-          </Button>
+          {/* Enhanced retry button for failed scenes */}
+          {scene.generation_status === 'failed' ? (
+            <>
+              <Button
+                size="sm"
+                variant="primary"
+                onClick={handleRegenerate}
+                disabled={regenerating}
+                className="flex-1"
+                title="Retry image generation with current prompt"
+              >
+                <Icon name="refresh" size="sm" />
+                {regenerating ? 'Retrying...' : 'Retry'}
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => setEditingPrompt(true)}
+                disabled={regenerating}
+                className="flex-1"
+                title="Edit prompt manually and retry"
+              >
+                <Icon name="edit" size="sm" />
+                Edit & Retry
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={handleRegenerate}
+              disabled={regenerating || scene.generation_status === 'generating'}
+              className="flex-1"
+              title="Re-queue scene for generation. ⚠️ Warning: >5 regenerations in 5 minutes may trigger ban detection"
+            >
+              <Icon name="refresh" size="sm" />
+              {regenerating ? 'Regenerating...' : 'Regenerate'}
+            </Button>
+          )}
 
           <label className="flex-1">
             <Button

@@ -24,7 +24,7 @@ export enum ErrorCode {
   // Queue Errors
   QUEUE_PAUSED = 'QUEUE_PAUSED',
   QUEUE_FAILED = 'QUEUE_FAILED',
-  GOOGLE_WISK_BAN = 'GOOGLE_WISK_BAN',
+  GOOGLE_WHISK_BAN = 'GOOGLE_WHISK_BAN',
 
   // Worker Errors
   IMAGE_GENERATION_FAILED = 'IMAGE_GENERATION_FAILED',
@@ -106,9 +106,9 @@ export const ERROR_MESSAGES: Record<ErrorCode, { message: string; solution: stri
     message: 'Failed to add job to queue',
     solution: 'Check that Redis is running. Restart the system if needed.',
   },
-  [ErrorCode.GOOGLE_WISK_BAN]: {
-    message: 'Google Wisk ban detected',
-    solution: 'Log into https://labs.google.com/wisk manually, wait 15 minutes, then restart workers.',
+  [ErrorCode.GOOGLE_WHISK_BAN]: {
+    message: 'Google Whisk ban detected',
+    solution: 'Log into https://labs.google.com/whisk manually, wait 15 minutes, then restart workers.',
   },
 
   // Worker Errors

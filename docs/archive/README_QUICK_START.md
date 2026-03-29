@@ -129,7 +129,7 @@ npm run dev
 ### "AutoWhisk extension not found"
 - Ensure AutoWhisk is installed in Chrome or Edge
 - Check the extension ID in `.env` matches installed version
-- Default ID: `gedfnhdibkfgacmkbjgpfjihacalnlpn`
+- Default ID: `gcgblhgncmhjchllkcpcneeibddhmbbe`
 
 ### "Google login required"
 - Open Chrome/Edge manually

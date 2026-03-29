@@ -1,129 +1,133 @@
+#!/usr/bin/env tsx
 /**
- * Token Refresh Integration Test
+ * Test automatic token refresh functionality
  *
- * Tests the automatic token refresh system:
- * 1. Launches browser with Chrome profile
- * 2. Navigates to Whisk and triggers image generation
- * 3. Captures Bearer token from network request
- * 4. Stores token in memory and .env file
- * 5. Validates token format and retrieval
- *
- * Usage: npm run test:token-refresh
+ * This will:
+ * 1. Check Chrome profile accessibility
+ * 2. Launch browser with your profile
+ * 3. Navigate to Whisk
+ * 4. Attempt to capture a token
  */
 
-import { WhiskTokenRefresher } from '../src/lib/whisk/token-refresh';
-import { WhiskTokenStore } from '../src/lib/whisk/token-store';
-import * as dotenv from 'dotenv';
+import dotenv from 'dotenv';
+import { WhiskTokenRefresher } from '../src/lib/whisk/token-refresh.js';
+import fs from 'fs';
 
-// Load environment variables
 dotenv.config();
 
 async function testTokenRefresh() {
-  console.log('╔══════════════════════════════════════════════════════════════╗');
-  console.log('║           Whisk Token Refresh Integration Test              ║');
-  console.log('╚══════════════════════════════════════════════════════════════╝');
-  console.log('');
+  console.log('🧪 Testing Automatic Token Refresh\n');
+  console.log('='.repeat(80));
+
+  // Step 1: Check Chrome profile
+  console.log('\n📂 Step 1: Checking Chrome profile...\n');
+
+  const profilePaths = [
+    'C:\\Users\\konra\\AppData\\Local\\Google\\Chrome\\User Data',
+    process.env.CHROME_PROFILE_PATH,
+  ].filter(Boolean);
+
+  let foundProfile = null;
+  for (const path of profilePaths) {
+    if (path && fs.existsSync(path)) {
+      console.log(`✅ Found Chrome profile: ${path}`);
+      foundProfile = path;
+      break;
+    } else {
+      console.log(`❌ Not found: ${path}`);
+    }
+  }
+
+  if (!foundProfile) {
+    console.error('\n❌ Chrome profile not found!');
+    console.error('\nTroubleshooting:');
+    console.error('1. Make sure Chrome is installed');
+    console.error('2. Check if profile path exists:');
+    profilePaths.forEach(p => console.error(`   ${p}`));
+    console.error('3. Set custom path in .env: CHROME_PROFILE_PATH=...');
+    process.exit(1);
+  }
+
+  // Step 2: Check current token
+  console.log('\n🔑 Step 2: Checking current token...\n');
+
+  const currentToken = process.env.WHISK_API_TOKEN;
+  if (!currentToken) {
+    console.error('❌ No token found in .env');
+  } else {
+    console.log(`✅ Current token: ${currentToken.substring(0, 20)}...`);
+    console.log(`   Length: ${currentToken.length} characters`);
+  }
+
+  // Step 3: Test browser launch
+  console.log('\n🌐 Step 3: Testing browser launch and token capture...\n');
+  console.log('⏳ This may take 30-60 seconds...');
+  console.log('   - Browser will launch (headless or visible)');
+  console.log('   - Navigate to Whisk');
+  console.log('   - Attempt to trigger image generation');
+  console.log('   - Capture token from network request\n');
+
+  const refresher = new WhiskTokenRefresher();
 
   try {
-    // Step 1: Refresh token
-    console.log('📋 Step 1: Refreshing token via browser automation...');
-    console.log('   - Launching Chrome with user profile');
-    console.log('   - Navigating to Whisk');
-    console.log('   - Triggering image generation');
-    console.log('   - Capturing Bearer token from network');
-    console.log('');
+    const result = await refresher.refreshToken();
 
-    const refresher = new WhiskTokenRefresher();
-    const { token, timestamp } = await refresher.refreshToken();
+    console.log('\n' + '='.repeat(80));
+    console.log('✅ SUCCESS! Token refresh completed\n');
+    console.log(`New token: ${result.token.substring(0, 20)}...${result.token.substring(result.token.length - 10)}`);
+    console.log(`Timestamp: ${new Date(result.timestamp).toISOString()}`);
+    console.log(`Length: ${result.token.length} characters`);
 
-    console.log('✅ Token captured successfully!');
-    console.log(`   Token preview: ${token.substring(0, 30)}...`);
-    console.log(`   Captured at: ${new Date(timestamp).toISOString()}`);
-    console.log(`   Expires at: ${new Date(timestamp + 60 * 60 * 1000).toISOString()}`);
-    console.log('');
-
-    // Step 2: Store token
-    console.log('📋 Step 2: Storing token in memory and .env file...');
-    await WhiskTokenStore.setToken(token);
-
-    console.log('✅ Token stored successfully!');
-    console.log('   - Updated in-memory cache');
-    console.log('   - Updated .env file');
-    console.log('   - Updated process.env.WHISK_API_TOKEN');
-    console.log('');
-
-    // Step 3: Validate retrieval
-    console.log('📋 Step 3: Validating token retrieval...');
-    const retrievedToken = WhiskTokenStore.getToken();
-
-    if (retrievedToken === token) {
-      console.log('✅ Token retrieved successfully from store!');
-      console.log(`   Retrieved token matches captured token`);
-    } else {
-      throw new Error('Token mismatch! Retrieved token does not match captured token.');
+    // Compare with old token
+    if (currentToken && currentToken !== result.token) {
+      console.log('\n🔄 Token has changed (refresh successful)');
+    } else if (currentToken && currentToken === result.token) {
+      console.log('\n⚠️  Token is the same as before (may still be valid)');
     }
-    console.log('');
 
-    // Step 4: Check expiration info
-    console.log('📋 Step 4: Checking expiration tracking...');
-    const expirationInfo = WhiskTokenStore.getExpirationInfo();
-
-    console.log('✅ Expiration tracking working!');
-    console.log(`   Is expired: ${expirationInfo.isExpired}`);
-    console.log(`   Time remaining: ${Math.floor(expirationInfo.timeRemaining / 1000 / 60)} minutes`);
-    console.log(`   Expires at: ${expirationInfo.expiresAt?.toISOString()}`);
-    console.log('');
-
-    // Success summary
-    console.log('╔══════════════════════════════════════════════════════════════╗');
-    console.log('║                    🎉 ALL TESTS PASSED! 🎉                   ║');
-    console.log('╚══════════════════════════════════════════════════════════════╝');
-    console.log('');
-    console.log('Summary:');
-    console.log('  ✅ Browser automation working');
-    console.log('  ✅ Token capture working');
-    console.log('  ✅ Token storage working (.env + memory)');
-    console.log('  ✅ Token retrieval working');
-    console.log('  ✅ Expiration tracking working');
-    console.log('');
-    console.log('Next steps:');
-    console.log('  1. Test automatic refresh by expiring token manually');
-    console.log('  2. Create a test job to verify images worker integration');
-    console.log('  3. Monitor worker logs for automatic refresh behavior');
-    console.log('');
+    console.log('\n✅ Auto-refresh is working correctly!');
+    console.log('\nNext steps:');
+    console.log('1. The new token has been captured');
+    console.log('2. Update .env manually: WHISK_API_TOKEN=' + result.token);
+    console.log('3. Restart workers: npm run workers');
 
   } catch (error) {
-    console.error('');
-    console.error('╔══════════════════════════════════════════════════════════════╗');
-    console.error('║                      ❌ TEST FAILED                          ║');
-    console.error('╚══════════════════════════════════════════════════════════════╝');
-    console.error('');
-    console.error('Error details:', error);
-    console.error('');
+    console.error('\n' + '='.repeat(80));
+    console.error('❌ FAILED! Token refresh encountered errors\n');
 
     if (error instanceof Error) {
-      if (error.message.includes('Chrome profile not found')) {
-        console.error('💡 Tip: Set CHROME_PROFILE_PATH in .env to your Chrome user data directory');
-        console.error('   Example: CHROME_PROFILE_PATH=C:\\Users\\YourName\\AppData\\Local\\Google\\Chrome\\User Data');
-      }
-
-      if (error.message.includes('2-Step Verification')) {
-        console.error('💡 Tip: Complete Google 2FA in your browser first, then retry this test');
-      }
-
-      if (error.message.includes('Token not captured')) {
-        console.error('💡 Tip: Whisk UI may have changed. Check if page loaded correctly.');
-        console.error('   Try running with WHISK_TOKEN_REFRESH_HEADLESS=false to see browser.');
-      }
+      console.error('Error message:');
+      console.error(error.message);
+      console.error('\nStack trace:');
+      console.error(error.stack);
+    } else {
+      console.error('Unknown error:', error);
     }
 
+    console.error('\n🔧 Troubleshooting:\n');
+    console.error('1. Make sure you are logged into Google in Chrome');
+    console.error('   - Open Chrome manually');
+    console.error('   - Visit https://labs.google.com/whisk');
+    console.error('   - Verify you can access Whisk without logging in');
     console.error('');
+    console.error('2. Check if Chrome profile is accessible');
+    console.error('   - Close all Chrome windows');
+    console.error('   - Run this test again');
+    console.error('');
+    console.error('3. Try visible mode (not headless)');
+    console.error('   - Edit .env: WHISK_TOKEN_REFRESH_HEADLESS=false');
+    console.error("   - Run test again to see what's happening");
+    console.error('');
+    console.error('4. Check Whisk page structure');
+    console.error('   - Google may have changed the UI');
+    console.error('   - Selectors may need updating');
+
     process.exit(1);
   }
 }
 
 // Run test
-testTokenRefresh().catch((error) => {
-  console.error('Fatal error:', error);
+testTokenRefresh().catch(error => {
+  console.error('💥 Fatal error:', error);
   process.exit(1);
 });

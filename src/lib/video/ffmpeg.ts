@@ -9,6 +9,23 @@ import { VideoMetadata, FFmpegNotFoundError, FFmpegProbeError } from './types';
  */
 
 /**
+ * Safely parse FFmpeg frame rate fraction (e.g., "30/1" → 30, "24000/1001" → 23.976)
+ * @param fractionString Frame rate as fraction string
+ * @returns Numeric frame rate
+ */
+function parseFraction(fractionString: string): number {
+  const parts = fractionString.split('/');
+  const numerator = Number(parts[0]);
+  const denominator = parts.length > 1 ? Number(parts[1]) : 1;
+
+  if (isNaN(numerator) || isNaN(denominator) || denominator === 0) {
+    throw new Error(`Invalid fraction format: ${fractionString}`);
+  }
+
+  return numerator / denominator;
+}
+
+/**
  * Check if FFmpeg is available
  */
 export function isFFmpegAvailable(): boolean {
@@ -106,7 +123,7 @@ export async function probeVideo(videoPath: string): Promise<VideoMetadata> {
           height: videoStream.height,
           resolution: `${videoStream.width}x${videoStream.height}`,
           codec: videoStream.codec_name,
-          fps: eval(videoStream.r_frame_rate), // e.g., "30/1" → 30
+          fps: parseFraction(videoStream.r_frame_rate), // e.g., "30/1" → 30, "24000/1001" → 23.976
           bitrate: parseInt(data.format.bit_rate) / 1000, // bps → kbps
           fileSize: parseInt(data.format.size),
           audioCodec: audioStream?.codec_name,

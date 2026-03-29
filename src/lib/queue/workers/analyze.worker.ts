@@ -188,6 +188,62 @@ export const analyzeWorker = new Worker<AnalyzeJobData>(
         return result;
       });
 
+      // PROACTIVE TOKEN VALIDATION: Check token before queueing images
+      console.log('🔍 [ANALYZE] Validating Whisk token before image generation...');
+
+      const { validateWhiskToken } = await import('../../whisk/token-validation');
+      const { triggerExtensionRefresh } = await import('../../whisk/extension-integration');
+
+      const tokenValid = await validateWhiskToken();
+
+      if (!tokenValid) {
+        console.warn('⚠️ [ANALYZE] Token invalid, triggering extension refresh...');
+
+        try {
+          const refreshResult = await triggerExtensionRefresh(30000); // 30 second timeout
+
+          if (!refreshResult.success) {
+            throw new Error(`Token refresh failed: ${refreshResult.error || 'Unknown error'}`);
+          }
+
+          // Re-validate after refresh
+          await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5s for token to update
+          const revalidated = await validateWhiskToken();
+
+          if (!revalidated) {
+            throw new Error('Token still invalid after refresh');
+          }
+
+          console.log('✅ [ANALYZE] Token refreshed successfully');
+
+        } catch (error) {
+          // Token refresh failed - mark job as failed and create notification
+          console.error('❌ [ANALYZE] Token refresh failed:', error);
+
+          await db.query(
+            'UPDATE news_jobs SET status = $1, error_message = $2 WHERE id = $3',
+            ['failed', `Token validation failed: ${error instanceof Error ? error.message : String(error)}`, jobId]
+          );
+
+          // Create notification
+          const { createNotification } = await import('../../notifications');
+          await createNotification({
+            job_id: jobId,
+            severity: 'error',
+            category: 'token_refresh',
+            message: 'Whisk token expired and automatic refresh failed. Manual intervention required.',
+            details: {
+              error: error instanceof Error ? error.message : String(error),
+              suggestion: 'Open Whisk in browser (F12 → Network → Generate image → Copy new Bearer token → Update .env)'
+            }
+          });
+
+          throw error; // Fail the job
+        }
+      } else {
+        console.log('✅ [ANALYZE] Token is valid, proceeding with image generation');
+      }
+
       // Queue all scenes to queue_images (OUTSIDE transaction for performance)
       for (const scene of sceneResult.rows) {
         await queueImages.add('generate-image', {

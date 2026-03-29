@@ -13,6 +13,7 @@ import { queueAnalyze, queueImages, queueRender, queueAvatarAutomation } from '.
   console.log('🚀 Starting BullMQ workers...');
   console.log(`📋 Environment: ${process.env.NODE_ENV}`);
   console.log(`🔌 Redis: ${process.env.REDIS_HOST}:${process.env.REDIS_PORT}`);
+  console.log(`🔑 Whisk Token (first 50 chars): ${process.env.WHISK_API_TOKEN?.substring(0, 50)}...`);
 
   // Initialize local storage directories
   console.log('📁 Initializing local storage...');

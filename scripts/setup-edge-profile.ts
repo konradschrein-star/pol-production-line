@@ -9,9 +9,22 @@
 
 import { chromium } from 'playwright';
 import { existsSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import { config } from 'dotenv';
+import * as os from 'os';
 
-const AUTO_WHISK_URL = 'https://chromewebstore.google.com/detail/auto-whisk-nano-banana-im/gedfnhdibkfgacmkbjgpfjihacalnlpn';
-const EXTENSION_ID = 'gedfnhdibkfgacmkbjgpfjihacalnlpn';
+// ✅ FIX: Load environment variables
+config();
+
+// ✅ FIX: Read extension ID from environment (no hardcoded fallback)
+const EXTENSION_ID = process.env.AUTO_WHISK_EXTENSION_ID;
+if (!EXTENSION_ID) {
+  console.error('❌ AUTO_WHISK_EXTENSION_ID not configured in .env file');
+  console.error('   Add AUTO_WHISK_EXTENSION_ID=gcgblhgncmhjchllkcpcneeibddhmbbe to your .env file.');
+  process.exit(1);
+}
+
+const AUTO_WHISK_URL = `https://chromewebstore.google.com/detail/auto-whisk-nano-banana-im/${EXTENSION_ID}`;
 
 async function setupEdgeProfile() {
   console.log('\n🔧 EDGE AUTOMATION PROFILE SETUP\n');
@@ -20,15 +33,23 @@ async function setupEdgeProfile() {
   console.log('2. Open the Auto Whisk extension installation page');
   console.log('3. Wait for you to install the extension and log into Google\n');
 
-  const edgeExecutable = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-  const automationProfilePath = 'C:\\Users\\konra\\AppData\\Local\\ObsidianNewsDesk\\edge-automation';
+  // ✅ FIX: Auto-detect Edge executable path (try multiple locations)
+  const possibleEdgePaths = [
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+  ];
 
-  // Verify Edge executable exists
-  if (!existsSync(edgeExecutable)) {
-    console.error(`❌ Edge executable not found at: ${edgeExecutable}`);
+  const edgeExecutable = possibleEdgePaths.find(p => existsSync(p));
+  if (!edgeExecutable) {
+    console.error(`❌ Edge executable not found at:`);
+    possibleEdgePaths.forEach(p => console.error(`   ${p}`));
     console.error('   Please install Microsoft Edge first.');
     process.exit(1);
   }
+
+  // ✅ FIX: Use environment-aware paths (not hardcoded to specific user)
+  const localAppData = process.env.LOCALAPPDATA || join(os.homedir(), 'AppData', 'Local');
+  const automationProfilePath = join(localAppData, 'ObsidianNewsDesk', 'edge-automation');
 
   // Create automation profile directory if it doesn't exist
   if (!existsSync(automationProfilePath)) {

@@ -6,10 +6,55 @@
 const CONFIG = {
   BACKEND_URL: 'http://localhost:8347',
   API_ENDPOINT: '/api/whisk/token',
-  WHISK_URL: 'https://labs.google/fx/tools/whisk/project',
+  // Auth session endpoint is language-agnostic (no locale needed)
   AUTH_SESSION_URL: 'https://labs.google/fx/api/auth/session',
   TOKEN_REFRESH_INTERVAL: 12 * 60 * 60 * 1000, // 12 hours
   ALARM_NAME: 'tokenRefresh',
+
+  /**
+   * ✅ AUTO-DETECTION: Detect user's locale from browser
+   * Supports worldwide usage (de, en, fr, ja, zh, es, it, etc.)
+   * Falls back to 'de' if detection fails
+   */
+  async getLocale() {
+    try {
+      // Try to get from storage (cached from previous detection)
+      const stored = await chrome.storage.local.get(['detectedLocale']);
+      if (stored.detectedLocale) {
+        return stored.detectedLocale;
+      }
+
+      // Auto-detect from open Whisk tabs
+      const tabs = await chrome.tabs.query({ url: 'https://labs.google/fx/*/tools/whisk/*' });
+      if (tabs.length > 0) {
+        const match = tabs[0].url.match(/\/fx\/([a-z]{2})\/tools/);
+        if (match) {
+          const locale = match[1];
+          await chrome.storage.local.set({ detectedLocale: locale });
+          console.log(`[Whisk Manager] 🌍 Auto-detected locale: ${locale}`);
+          return locale;
+        }
+      }
+
+      // Fallback: Check browser language
+      const browserLang = navigator.language.split('-')[0]; // 'en-US' -> 'en'
+      await chrome.storage.local.set({ detectedLocale: browserLang });
+      console.log(`[Whisk Manager] 🌍 Using browser language: ${browserLang}`);
+      return browserLang;
+
+    } catch (error) {
+      console.warn('[Whisk Manager] ⚠️  Locale detection failed, using fallback: de');
+      return 'de';
+    }
+  },
+
+  /**
+   * Get Whisk URL with auto-detected locale
+   */
+  async getWhiskUrl() {
+    const locale = await this.getLocale();
+    return `https://labs.google/fx/${locale}/tools/whisk/project`;
+  },
 };
 
 let state = {
@@ -80,12 +125,50 @@ chrome.runtime.onInstalled.addListener(async (details) => {
     }
   }
 
-  // Set up periodic refresh alarm (every 12 hours)
+  // Set up periodic refresh alarm (every 30 minutes for proactive token refresh)
+  // Tokens expire after ~60 minutes, so we refresh at 50 minutes to prevent 401 errors
   chrome.alarms.create(CONFIG.ALARM_NAME, {
-    periodInMinutes: 12 * 60,  // 720 minutes = 12 hours
+    periodInMinutes: 30,  // Check every 30 minutes
   });
 
-  console.log('[Whisk Manager] ⏰ Auto-refresh alarm set (every 12 hours)');
+  console.log('[Whisk Manager] ⏰ Auto-refresh alarm set (every 30 minutes, proactive mode)');
+});
+
+/**
+ * Check token on service worker startup/wake
+ * This ensures expired tokens are refreshed automatically
+ * even if the alarm didn't fire (service worker was asleep)
+ */
+chrome.runtime.onStartup.addListener(async () => {
+  console.log('[Whisk Manager] 🔄 Service worker started - checking token status...');
+
+  // Load saved token
+  const data = await chrome.storage.local.get(['lastToken', 'lastTokenTime', 'tokenExpires']);
+  if (data.lastToken) {
+    state.lastToken = data.lastToken;
+    state.lastTokenTime = data.lastTokenTime || 0;
+    state.tokenExpires = data.tokenExpires || null;
+
+    // Check if token is expired or about to expire (< 1 hour left)
+    if (state.tokenExpires) {
+      const timeUntilExpiry = state.tokenExpires - Date.now();
+      const hoursUntilExpiry = timeUntilExpiry / (1000 * 60 * 60);
+
+      if (hoursUntilExpiry < 1) {
+        console.log(`[Whisk Manager] ⚠️  Token expires in ${hoursUntilExpiry.toFixed(1)}h - auto-refreshing...`);
+        // Wait 2 seconds for Chrome to fully start
+        setTimeout(async () => {
+          await refreshToken(true); // Force refresh
+        }, 2000);
+      } else {
+        console.log(`[Whisk Manager] ✅ Token valid for ${hoursUntilExpiry.toFixed(1)}h`);
+        // Resend to backend in case it restarted
+        await sendTokenToBackend(state.lastToken, true);
+      }
+    }
+  } else {
+    console.log('[Whisk Manager] ⚠️  No token found - will capture on first Whisk visit');
+  }
 });
 
 /**
@@ -192,7 +275,18 @@ function isValidWhiskToken(token) {
 chrome.alarms.onAlarm.addListener(async (alarm) => {
   if (alarm.name === CONFIG.ALARM_NAME) {
     console.log('[Whisk Manager] ⏰ Auto-refresh alarm triggered');
-    await refreshToken();
+
+    // PROACTIVE TOKEN REFRESH: Check token age before it expires
+    const { tokenTimestamp } = await chrome.storage.local.get(['tokenTimestamp']);
+    const tokenAge = Date.now() - (tokenTimestamp || 0);
+    const FIFTY_MINUTES = 50 * 60 * 1000;
+
+    if (tokenAge > FIFTY_MINUTES) {
+      console.log('[Whisk Manager] ⚠️  Token approaching expiry (age: ' + Math.round(tokenAge / 60000) + ' min), refreshing proactively...');
+      await refreshToken();
+    } else {
+      console.log('[Whisk Manager] ✅ Token still fresh (age: ' + Math.round(tokenAge / 60000) + ' min), skipping refresh');
+    }
   }
 });
 
@@ -337,8 +431,11 @@ async function refreshToken(isManualRefresh = false) {
 
     // Open Whisk in background tab
     // The auth session endpoint will be called automatically on page load
+    const whiskUrl = await CONFIG.getWhiskUrl();
+    console.log(`   Using locale-specific URL: ${whiskUrl}`);
+
     const tab = await chrome.tabs.create({
-      url: CONFIG.WHISK_URL,
+      url: whiskUrl,
       active: false,  // Background tab
     });
 

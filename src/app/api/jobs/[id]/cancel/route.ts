@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cancelJobQueues } from '@/lib/queue/cleanup';
+import { jobIdParamsSchema, validateParams, formatValidationErrors } from '@/lib/validation/schemas';
+import { z } from 'zod';
 
 /**
  * POST /api/jobs/[id]/cancel
  * Cancel a job and clean up queue entries
+ * PRODUCTION HARDENING (Bug #15 fix): Added UUID validation
  */
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
-    const { id } = params;
+    // PRODUCTION HARDENING: Validate UUID parameter (Bug #15 fix)
+    const { id } = validateParams(jobIdParamsSchema, params);
     const body = await request.json().catch(() => ({}));
     const reason = body.reason || 'Cancelled by user';
 
@@ -70,6 +74,11 @@ export async function POST(
     return NextResponse.json({ success: true });
 
   } catch (error: unknown) {
+    // PRODUCTION HARDENING: Handle validation errors
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(formatValidationErrors(error), { status: 400 });
+    }
+
     console.error('❌ [API] Cancel job error:', error);
 
     return NextResponse.json(

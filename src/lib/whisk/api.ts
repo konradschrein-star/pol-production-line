@@ -35,7 +35,8 @@ export type { WhiskImageGenerateRequest, WhiskGenerateResponse, WhiskReferenceIm
 
 export class WhiskAPIClient {
   private bearerToken: string;
-  private apiUrl: string = 'https://aisandbox-pa.googleapis.com/v1/whisk:generateImage';
+  // ✅ FIX: Make API endpoint configurable via environment variable
+  private apiUrl: string = process.env.WHISK_API_ENDPOINT || 'https://aisandbox-pa.googleapis.com/v1/whisk:generateImage';
 
   constructor(bearerToken?: string) {
     // Priority: parameter > token store > environment
@@ -43,6 +44,11 @@ export class WhiskAPIClient {
 
     if (!this.bearerToken) {
       throw new Error('WHISK_API_TOKEN not set in environment variables');
+    }
+
+    // Log configured endpoint (helps with debugging)
+    if (process.env.WHISK_API_ENDPOINT) {
+      console.log(`🔧 [Whisk] Using custom API endpoint: ${this.apiUrl}`);
     }
   }
 
@@ -254,14 +260,19 @@ export class WhiskAPIClient {
         const generatedImages = panel.generatedImages || [];
         generatedImages.forEach((img: any, imgIdx: number) => {
           images.push({
-            url: img.imageUrl || '',
-            base64: img.encodedImage || '',
+            url: img.imageUrl || null,
+            base64: img.encodedImage || null,
             id: `image_${panelIdx}_${imgIdx}`,
           });
         });
       });
 
       console.log(`✅ [Whisk API] Received ${images.length} image(s)`);
+
+      // Validate that we actually got images
+      if (images.length === 0) {
+        throw new Error('No images returned from API (empty response)');
+      }
 
       return {
         images,

@@ -143,7 +143,23 @@ export const config = {
   server: {
     port: getIntEnv('PORT', 8347),
     host: getEnv('HOST', 'localhost'),
-    baseUrl: getEnv('NEXT_PUBLIC_APP_URL', 'http://localhost:8347'),
+    // ✅ FIX: Environment-aware baseUrl fallback
+    // Development: Allow localhost fallback for local testing
+    // Production: Require explicit configuration (no unsafe defaults)
+    baseUrl: (() => {
+      const url = process.env.NEXT_PUBLIC_APP_URL;
+      if (!url) {
+        const isProduction = getEnv('NODE_ENV', 'development') === 'production';
+        if (isProduction) {
+          throw new Error(
+            'NEXT_PUBLIC_APP_URL must be set in production environment.\n' +
+            'Add NEXT_PUBLIC_APP_URL=https://your-domain.com to your .env file.'
+          );
+        }
+        return 'http://localhost:8347'; // Development fallback
+      }
+      return url;
+    })(),
     adminApiKey: getEnv('ADMIN_API_KEY', ''),
   },
 

@@ -1,6 +1,6 @@
 import fs from 'fs/promises';
 import path from 'path';
-import { existsSync } from 'fs';
+import { existsSync, statfsSync } from 'fs';
 import { getBaseStoragePath, makeRelativePath, resolveStoragePath } from './path-resolver';
 
 /**
@@ -202,4 +202,51 @@ export function resolveFilePath(relativePath: string): string {
  */
 export function toRelativePath(absolutePath: string): string {
   return makeRelativePath(absolutePath);
+}
+
+/**
+ * CRITICAL FIX #25: Check available disk space before render
+ * @param minRequiredMB - Minimum required space in megabytes (default 500MB)
+ * @returns Object with available space info and whether sufficient space exists
+ */
+export function checkDiskSpace(minRequiredMB: number = 500): {
+  available: boolean;
+  availableMB: number;
+  requiredMB: number;
+  path: string;
+} {
+  try {
+    const BASE_DIR = getBaseDIR();
+
+    // Use statfsSync to get filesystem stats (Node 19+)
+    const stats = statfsSync(BASE_DIR);
+
+    // Calculate available space in MB
+    const availableBytes = stats.bavail * stats.bsize;
+    const availableMB = Math.floor(availableBytes / (1024 * 1024));
+
+    const available = availableMB >= minRequiredMB;
+
+    if (!available) {
+      console.warn(
+        `⚠️  [Storage] Low disk space: ${availableMB}MB available, ${minRequiredMB}MB required at ${BASE_DIR}`
+      );
+    }
+
+    return {
+      available,
+      availableMB,
+      requiredMB: minRequiredMB,
+      path: BASE_DIR,
+    };
+  } catch (error) {
+    console.error(`❌ [Storage] Failed to check disk space:`, error);
+    // If we can't check, assume there's space (fail open, not closed)
+    return {
+      available: true,
+      availableMB: -1,
+      requiredMB: minRequiredMB,
+      path: getBaseDIR(),
+    };
+  }
 }

@@ -150,53 +150,56 @@ export function calculateScenePacing(
 
   console.log(`   Body interval: ${bodyIntervalSeconds.toFixed(2)}s per scene`);
 
-  // Build scene timing array
+  // Build scene timing array with improved rounding algorithm
+  // Calculate exact fractional boundaries first, then round to distribute error evenly
   const sceneTiming: SceneTiming[] = [];
-  let currentFrame = 0;
-
-  // Hook scenes
-  for (let i = 0; i < hookSceneCount; i++) {
-    const durationInFrames = Math.round(HOOK_INTERVAL_SECONDS * fps);
-
-    sceneTiming.push({
-      sceneId: `scene_${i}`,
-      startFrame: currentFrame,
-      durationInFrames,
-      durationInSeconds: HOOK_INTERVAL_SECONDS,
-    });
-
-    currentFrame += durationInFrames;
-  }
-
-  // Body scenes
-  for (let i = hookSceneCount; i < sceneCount; i++) {
-    const durationInFrames = Math.round(bodyIntervalSeconds * fps);
-
-    sceneTiming.push({
-      sceneId: `scene_${i}`,
-      startFrame: currentFrame,
-      durationInFrames,
-      durationInSeconds: bodyIntervalSeconds,
-    });
-
-    currentFrame += durationInFrames;
-  }
-
-  // Final frame count should match avatar duration
   const totalFrames = Math.round(avatarDurationSeconds * fps);
 
-  // CRITICAL FIX: Adjust last scene to fill exactly to the end (handle rounding errors)
-  if (sceneTiming.length > 0) {
-    const lastScene = sceneTiming[sceneTiming.length - 1];
-    const currentEndFrame = lastScene.startFrame + lastScene.durationInFrames;
+  // Calculate exact fractional end frames for each scene
+  const exactEndFrames: number[] = [];
+  let exactFrame = 0;
 
-    if (currentEndFrame !== totalFrames) {
-      const adjustment = totalFrames - currentEndFrame;
-      console.log(`🔧 [Pacing] Adjusting last scene by ${adjustment} frames to fill video exactly`);
+  for (let i = 0; i < sceneCount; i++) {
+    const intervalSeconds = i < hookSceneCount ? HOOK_INTERVAL_SECONDS : bodyIntervalSeconds;
+    exactFrame += intervalSeconds * fps;
+    exactEndFrames.push(exactFrame);
+  }
 
-      lastScene.durationInFrames = totalFrames - lastScene.startFrame;
-      lastScene.durationInSeconds = lastScene.durationInFrames / fps;
+  // Round boundaries to integer frames, ensuring last frame exactly matches totalFrames
+  const roundedEndFrames: number[] = exactEndFrames.map((frame, i) => {
+    if (i === sceneCount - 1) {
+      // Force last scene to end exactly at total frames
+      return totalFrames;
     }
+    return Math.round(frame);
+  });
+
+  // Build scene timing from rounded boundaries
+  let currentFrame = 0;
+
+  for (let i = 0; i < sceneCount; i++) {
+    const endFrame = roundedEndFrames[i];
+
+    // CRITICAL FIX (Bug #20): For last scene, use counter-based calculation to prevent rounding errors
+    // This ensures exact coverage with no accumulation of floating-point errors
+    const isLastScene = i === sceneCount - 1;
+    const durationInFrames = isLastScene
+      ? totalFrames - currentFrame  // Counter-based: guaranteed exact
+      : endFrame - currentFrame;    // Boundary-based: for intermediate scenes
+
+    // Safety check: ensure positive duration
+    if (durationInFrames <= 0) {
+      console.warn(`⚠️ [Pacing] Scene ${i} has non-positive duration (${durationInFrames} frames). Using minimum 1 frame.`);
+    }
+
+    sceneTiming.push({
+      sceneId: `scene_${i}`,
+      startFrame: currentFrame,
+      durationInFrames: Math.max(1, durationInFrames),
+      durationInSeconds: Math.max(1, durationInFrames) / fps,
+    });
+
+    currentFrame = endFrame;
   }
 
   console.log(`✅ [Pacing] Calculated ${sceneCount} scenes`);
@@ -440,75 +443,63 @@ export function calculateTranscriptBasedPacing(
   }
 
   // ===== CRITICAL FIX: Ensure continuous coverage with NO gaps =====
-  // Recalculate to eliminate black frames between scenes
+  // Adjust start frames to ensure no gaps, but preserve durations from transcript matching
+
+  const totalFrames = Math.round(avatarDurationSeconds * fps);
 
   // CRITICAL VALIDATION: Check if we have the correct number of scene timings
   if (sceneTiming.length !== sceneCount) {
-    console.error(`⚠️ [Pacing] SCENE COUNT MISMATCH!`);
+    console.error(`❌ [Pacing] SCENE COUNT MISMATCH!`);
     console.error(`   Expected: ${sceneCount} scenes`);
     console.error(`   Generated: ${sceneTiming.length} scene timings`);
     console.error(`   Hook scenes generated: ${sceneTiming.filter(s => s.sceneId.startsWith('scene_') && parseInt(s.sceneId.split('_')[1]) < targetHookScenes).length}`);
     console.error(`   Body scenes generated: ${sceneTiming.filter(s => s.sceneId.startsWith('scene_') && parseInt(s.sceneId.split('_')[1]) >= targetHookScenes).length}`);
-    console.error(`   This will cause scene/timing mismatch - filling missing scenes with equal distribution`);
+
+    // ✅ FIX: THROW ERROR instead of logging and continuing
+    throw new Error(
+      `CRITICAL: Scene/timing mismatch (${sceneTiming.length} timings for ${sceneCount} scenes). ` +
+      `This indicates a bug in transcript matching or AI analysis. Cannot safely render video.`
+    );
   }
 
-  const continuousSceneTiming: SceneTiming[] = [];
-  const totalFrames = Math.round(avatarDurationSeconds * fps);
+  // Ensure continuous coverage by adjusting start frames (preserve durations from transcript!)
+  console.log(`\n🔧 [Pacing] Ensuring continuous coverage (preserving transcript-based durations)`);
+
   let currentFrame = 0;
+  for (let i = 0; i < sceneTiming.length; i++) {
+    sceneTiming[i].startFrame = currentFrame;
+    currentFrame += sceneTiming[i].durationInFrames;
 
-  console.log(`\n🔧 [Pacing] CRITICAL FIX: Creating ${sceneCount} continuous timings`);
-  console.log(`   Total frames available: ${totalFrames}`);
-
-  // FIXED: Always create exactly sceneCount timings, not min(sceneTiming.length, sceneCount)
-  for (let i = 0; i < sceneCount; i++) {
-    // Calculate duration for this scene, ensuring we fill the entire video
-    const remainingFrames = totalFrames - currentFrame;
-    const remainingScenes = sceneCount - i;
-
-    // Distribute remaining frames evenly across remaining scenes
-    const durationInFrames = remainingScenes > 0 && remainingFrames > 0
-      ? Math.round(remainingFrames / remainingScenes)
-      : 1; // Fallback to 1 frame if we run out
-
-    const timing = {
-      sceneId: `scene_${i}`,
-      startFrame: currentFrame,
-      durationInFrames: Math.max(1, durationInFrames), // Ensure at least 1 frame
-      durationInSeconds: Math.max(1, durationInFrames) / fps,
-    };
-
-    continuousSceneTiming.push(timing);
-
-    console.log(`   Scene ${i}: Frame ${currentFrame} - ${currentFrame + timing.durationInFrames - 1} (${timing.durationInFrames} frames = ${(timing.durationInFrames / fps).toFixed(2)}s)`);
-
-    currentFrame += timing.durationInFrames;
+    console.log(
+      `   Scene ${i}: Frame ${sceneTiming[i].startFrame} - ${currentFrame - 1} ` +
+      `(${sceneTiming[i].durationInFrames} frames = ${sceneTiming[i].durationInSeconds.toFixed(2)}s)`
+    );
   }
 
-  console.log(`\n✅ [Pacing] Loop completed: Created ${continuousSceneTiming.length} timings`);
+  // Adjust last scene to fill exactly to the end (handle rounding errors)
+  if (sceneTiming.length > 0) {
+    const lastScene = sceneTiming[sceneTiming.length - 1];
+    const lastSceneEnd = lastScene.startFrame + lastScene.durationInFrames;
 
-  // Adjust last scene to fill exactly to the end (handle rounding)
-  if (continuousSceneTiming.length > 0) {
-    const lastScene = continuousSceneTiming[continuousSceneTiming.length - 1];
-    lastScene.durationInFrames = totalFrames - lastScene.startFrame;
-    lastScene.durationInSeconds = lastScene.durationInFrames / fps;
+    if (lastSceneEnd !== totalFrames) {
+      const adjustment = totalFrames - lastSceneEnd;
+      console.log(`🔧 [Pacing] Adjusting last scene by ${adjustment} frames to fill video exactly`);
+
+      lastScene.durationInFrames = totalFrames - lastScene.startFrame;
+      lastScene.durationInSeconds = lastScene.durationInFrames / fps;
+    }
   }
 
-  console.log(`✅ [Pacing] Calculated ${continuousSceneTiming.length} scenes (continuous coverage)`);
+  console.log(`✅ [Pacing] Calculated ${sceneTiming.length} scenes (continuous coverage, transcript-based)`);
   console.log(`   Total duration: ${avatarDurationSeconds}s (${totalFrames} frames)`);
   console.log(`   Coverage: Frame 0 to ${totalFrames} (NO GAPS)`);
-
-  // FINAL VALIDATION
-  if (continuousSceneTiming.length !== sceneCount) {
-    console.error(`❌ [Pacing] CRITICAL ERROR: Failed to create correct number of scene timings!`);
-    console.error(`   Expected: ${sceneCount}, Got: ${continuousSceneTiming.length}`);
-  }
 
   return {
     totalDurationInFrames: totalFrames,
     totalDurationInSeconds: avatarDurationSeconds,
-    sceneTiming: continuousSceneTiming,
+    sceneTiming, // ✅ FIX: Return original transcript-based timing, not uniform timing
     hookScenes: targetHookScenes,
-    bodyScenes: continuousSceneTiming.length - targetHookScenes,
+    bodyScenes: sceneTiming.length - targetHookScenes,
   };
 }
 
@@ -602,9 +593,17 @@ function calculateDatabaseDrivenPacing(input: {
   });
 
   // STEP 5: Adjust for gaps/overlaps
-  if (coveragePercent < 95 || coveragePercent > 105) {
-    console.warn(`⚠️  Coverage outside tolerance (95-105%), applying corrections...`);
+  // CRITICAL FIX (Bug #21): Tightened tolerance from 95-105% to 99.5-100.5%
+  // Prevents black screens from timing gaps
+  const MIN_COVERAGE = 99.5;
+  const MAX_COVERAGE = 100.5;
+
+  if (coveragePercent < MIN_COVERAGE || coveragePercent > MAX_COVERAGE) {
+    console.warn(`⚠️  Coverage outside tight tolerance (${MIN_COVERAGE}-${MAX_COVERAGE}%), applying corrections...`);
+    console.warn(`   Current: ${coveragePercent.toFixed(2)}%`);
     adjustSceneTiming(sceneTiming, totalFrames, fps);
+  } else {
+    console.log(`✅ [Validation] Coverage within tolerance (${MIN_COVERAGE}-${MAX_COVERAGE}%)`);
   }
 
   // STEP 6: Ensure continuous coverage

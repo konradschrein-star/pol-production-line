@@ -15,14 +15,24 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import * as path from 'path';
 import * as fs from 'fs';
 
-const WHISK_URL = 'https://labs.google/fx/tools/whisk/';
+// ✅ FIX: Support locale-specific URLs via environment variable
+// Set WHISK_LOCALE=de in .env for German, WHISK_LOCALE=en for English, etc.
+const LOCALE = process.env.WHISK_LOCALE || 'de';
+const WHISK_URL = `https://labs.google/fx/${LOCALE}/tools/whisk/`;
 const WHISK_API_ENDPOINT = 'whisk:generateImage';
 const GOOGLE_OAUTH_TOKEN_PATTERN = /^ya29\.[a-zA-Z0-9_-]{100,}$/;
 
 // Chrome profile paths (Windows-specific)
+// Use dedicated automation profile to avoid conflicts with running Chrome
+const AUTOMATION_PROFILE_PATH = path.join(
+  process.env.LOCALAPPDATA || '',
+  'ObsidianNewsDesk',
+  'chrome-automation-profile'
+);
+
 const CHROME_PROFILE_PATHS = [
-  'C:\\Users\\konra\\AppData\\Local\\Google\\Chrome\\User Data',
-  process.env.CHROME_PROFILE_PATH || '',
+  process.env.CHROME_PROFILE_PATH || AUTOMATION_PROFILE_PATH,
+  AUTOMATION_PROFILE_PATH,
 ].filter(Boolean);
 
 export class WhiskTokenRefresher {
@@ -126,7 +136,20 @@ export class WhiskTokenRefresher {
       console.log('✅ [Token Refresh] Page loaded');
 
       // Check for Google 2FA or login prompts
-      await this.checkForAuthenticationIssues(page);
+      const needsAuth = await this.checkForAuthenticationIssues(page);
+
+      if (needsAuth) {
+        // Wait for user to complete authentication
+        // Wait until we navigate to Whisk (URL contains labs.google)
+        await page.waitForFunction(
+          () => window.location.href.includes('labs.google/fx') && !window.location.href.includes('accounts.google'),
+          { timeout: 120000 } // 2 minutes for user to log in
+        );
+
+        console.log('✅ [Token Refresh] Authentication completed');
+        // Wait for page to fully load after authentication
+        await page.waitForTimeout(3000);
+      }
 
       // Trigger image generation to capture token
       await this.triggerImageGeneration(page, timeout);
@@ -181,24 +204,29 @@ export class WhiskTokenRefresher {
 
   /**
    * Check for authentication issues (2FA, login prompts)
+   * Returns true if user needs to authenticate, false otherwise
    */
-  private async checkForAuthenticationIssues(page: Page): Promise<void> {
+  private async checkForAuthenticationIssues(page: Page): Promise<boolean> {
     const url = page.url();
     const title = await page.title();
 
     // Check for Google login page
     if (url.includes('accounts.google.com/signin') || url.includes('accounts.google.com/ServiceLogin')) {
-      throw new Error(
-        'Google login required. Please sign in to Google in your Chrome browser first, then retry.'
-      );
+      console.log('⚠️  [Token Refresh] Google login required');
+      console.log('   📝 Please sign in to Google in the browser window');
+      console.log('   ⏳ Waiting for you to complete login...');
+      return true; // Needs authentication
     }
 
-    // Check for 2FA prompt
-    if (title.includes('2-Step Verification') || url.includes('challenge')) {
-      throw new Error(
-        'Google 2-Step Verification required. Please complete 2FA in your browser manually, then retry.'
-      );
+    // Check for 2FA prompt (be more specific - check title, not just URL)
+    if (title.includes('2-Step Verification') || title.includes('Verify')) {
+      console.log('⚠️  [Token Refresh] 2FA verification required');
+      console.log('   📝 Please complete 2-Step Verification in the browser window');
+      console.log('   ⏳ Waiting for you to complete 2FA...');
+      return true; // Needs 2FA
     }
+
+    return false; // No authentication needed
   }
 
   /**
@@ -258,12 +286,29 @@ export class WhiskTokenRefresher {
 
   /**
    * Find Chrome user data directory
+   * Creates automation profile if it doesn't exist
    */
   private findChromeProfile(): string | null {
     for (const profilePath of CHROME_PROFILE_PATHS) {
-      if (profilePath && fs.existsSync(profilePath)) {
+      if (!profilePath) continue;
+
+      // If it exists, use it
+      if (fs.existsSync(profilePath)) {
         console.log(`✅ [Token Refresh] Found Chrome profile: ${profilePath}`);
         return profilePath;
+      }
+
+      // If it's the automation profile path, create it
+      if (profilePath === AUTOMATION_PROFILE_PATH) {
+        try {
+          fs.mkdirSync(profilePath, { recursive: true });
+          console.log(`✅ [Token Refresh] Created automation profile: ${profilePath}`);
+          console.log(`   📝 Note: You'll need to log into Google on first run`);
+          return profilePath;
+        } catch (error) {
+          console.error(`⚠️  [Token Refresh] Failed to create automation profile: ${error}`);
+          continue;
+        }
       }
     }
 

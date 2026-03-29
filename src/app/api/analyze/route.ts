@@ -74,12 +74,12 @@ export async function POST(request: NextRequest) {
       console.log(`✅ [API] Avatar saved to: ${avatarPath}`);
     }
 
-    // Create job in database with avatar path and style preset
+    // Create job in database with avatar path, style preset, and metadata
     const result = await db.query(
-      `INSERT INTO news_jobs (raw_script, avatar_script, avatar_mp4_url, status, style_preset_id)
-       VALUES ($1, $2, $3, $4, $5)
+      `INSERT INTO news_jobs (raw_script, avatar_script, avatar_mp4_url, status, style_preset_id, job_metadata)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING id, status, created_at`,
-      [raw_script, raw_script, avatarPath, 'pending', style_preset_id || null]
+      [raw_script, raw_script, avatarPath, 'pending', style_preset_id || null, JSON.stringify({ skip_review, provider })]
     );
 
     const job = result.rows[0];

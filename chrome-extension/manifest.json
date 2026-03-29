@@ -35,7 +35,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://labs.google/fx/tools/whisk/*"],
+      "matches": [
+        "https://labs.google/fx/tools/whisk/*",
+        "https://labs.google/fx/*/tools/whisk/*"
+      ],
       "js": ["whisk-automator.js"],
       "run_at": "document_end",
       "all_frames": false

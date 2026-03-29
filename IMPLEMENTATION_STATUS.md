@@ -119,7 +119,7 @@ docker exec obsidian-postgres psql -U obsidian -d obsidian_news -c \
 
 **Implementation Highlights:**
 - Playwright launches Chromium in non-headless mode (required for extensions)
-- Auto Whisk extension ID: `gedfnhdibkfgacmkbjgpfjihacalnlpn`
+- Auto Whisk extension ID: `gcgblhgncmhjchllkcpcneeibddhmbbe`
 - Extension page: `chrome-extension://{id}/index.html`
 - Downloads monitored at: `<UserDownloads>/Wisk Downloads/`
 - File detection uses chokidar with `awaitWriteFinish` for stability
@@ -151,7 +151,7 @@ npm run dev                        # Terminal 2
 ```
 
 **Prerequisites:**
-1. Install Auto Whisk extension: https://chromewebstore.google.com/detail/gedfnhdibkfgacmkbjgpfjihacalnlpn
+1. Install Auto Whisk extension: https://chromewebstore.google.com/detail/gcgblhgncmhjchllkcpcneeibddhmbbe
 2. Sign in to Google account in extension
 3. Update `R2_PUBLIC_URL` in `.env`
 

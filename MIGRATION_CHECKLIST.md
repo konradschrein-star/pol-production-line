@@ -23,7 +23,7 @@ R2_PUBLIC_URL=https://pub-xxxx.r2.dev
 
 ```bash
 # Auto Whisk Extension ID
-AUTO_WHISK_EXTENSION_ID=gedfnhdibkfgacmkbjgpfjihacalnlpn
+AUTO_WHISK_EXTENSION_ID=gcgblhgncmhjchllkcpcneeibddhmbbe
 
 # Persistent context directory (saves Google login)
 PLAYWRIGHT_USER_DATA_DIR=./playwright-data
@@ -211,12 +211,12 @@ dir C:\Users\konra\ObsidianNewsDesk\videos
 **Cause:** Running in WSL or Linux
 **Solution:** Run workers in Windows PowerShell or CMD
 
-### ❌ Error: "Extension not found: gedfnhdibkfgacmkbjgpfjihacalnlpn"
+### ❌ Error: "Extension not found: gcgblhgncmhjchllkcpcneeibddhmbbe"
 
 **Cause:** Auto Whisk extension not installed
 **Solution:**
 1. Open Edge/Chrome
-2. Install from: https://chromewebstore.google.com/detail/auto-whisk-nano-banana-im/gedfnhdibkfgacmkbjgpfjihacalnlpn
+2. Install from: https://chromewebstore.google.com/detail/auto-whisk-nano-banana-im/gcgblhgncmhjchllkcpcneeibddhmbbe
 3. Restart workers
 
 ### ❌ Worker stuck in "paused" state

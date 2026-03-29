@@ -87,6 +87,57 @@ export function validateSceneQuality(
     );
   }
 
+  // 1.5. Check scene order is sequential (0, 1, 2, 3...)
+  const expectedOrder = Array.from({ length: scenes.length }, (_, i) => i);
+  const actualOrder = scenes.map((s) => s.scene_order).sort((a, b) => a - b);
+
+  const orderMismatch = expectedOrder.some((exp, idx) => exp !== actualOrder[idx]);
+  if (orderMismatch) {
+    result.passed = false;
+    result.errors.push(
+      `Scene order not sequential: expected [${expectedOrder.join(', ')}], ` +
+        `got [${actualOrder.join(', ')}]`
+    );
+  }
+
+  // 1.6. ✅ FIX (Bug #3): Validate scene IDs match timing IDs
+  // This ensures scenes[i] correctly matches sceneTiming[i]
+  for (let i = 0; i < Math.min(scenes.length, sceneTiming.length); i++) {
+    const scene = scenes[i];
+    const timing = sceneTiming[i];
+
+    // Extract scene number from ID (handle both "scene_0" and UUID formats)
+    const sceneIdMatch = scene.id.match(/scene_(\d+)/);
+
+    if (sceneIdMatch) {
+      const sceneNumber = parseInt(sceneIdMatch[1]);
+
+      // Scene ID should match its position in the array
+      if (sceneNumber !== i) {
+        result.passed = false;
+        result.errors.push(
+          `Scene ${i} has mismatched ID: expected "scene_${i}", got "${scene.id}"`
+        );
+      }
+
+      // Timing ID should also match
+      if (timing.sceneId !== `scene_${i}`) {
+        result.passed = false;
+        result.errors.push(
+          `Scene ${i} timing mismatch: scene ID is "${scene.id}", but timing ID is "${timing.sceneId}"`
+        );
+      }
+    } else {
+      // UUID format is OK for database-generated IDs, but warn for transparency
+      if (i === 0) {
+        // Only warn once to avoid spam
+        result.warnings.push(
+          `Scene IDs are in UUID format (not "scene_N" format). This is OK for database-generated IDs.`
+        );
+      }
+    }
+  }
+
   // 2. Check all scenes have images
   const missingImages = scenes.filter((s) => !s.image_url || s.image_url.trim() === '');
   if (missingImages.length > 0) {
@@ -102,6 +153,7 @@ export function validateSceneQuality(
   let lastEndFrame = 0;
   let hasGaps = false;
   let totalGapFrames = 0;
+  let totalSceneDuration = 0;
 
   for (let i = 0; i < sceneTiming.length; i++) {
     const timing = sceneTiming[i];
@@ -110,8 +162,26 @@ export function validateSceneQuality(
     const startFrame = timing.startFrame;
     const endFrame = timing.startFrame + timing.durationInFrames;
 
+    // Track cumulative duration
+    totalSceneDuration += timing.durationInSeconds;
+
+    // CRITICAL FIX (Bug #23): Check first scene starts at frame 0
+    if (i === 0 && startFrame !== 0) {
+      const gapFrames = startFrame;
+      const gapSeconds = gapFrames / fps;
+
+      hasGaps = true;
+      totalGapFrames += gapFrames;
+
+      result.warnings.push(
+        `Gap at start: First scene starts at frame ${startFrame} instead of 0 (${gapSeconds.toFixed(
+          2
+        )}s gap) - THIS WILL CAUSE BLACK SCREEN`
+      );
+    }
+
     // Check for gap between scenes
-    if (startFrame > lastEndFrame && lastEndFrame > 0) {
+    if (i > 0 && startFrame > lastEndFrame) {
       const gapFrames = startFrame - lastEndFrame;
       const gapSeconds = gapFrames / fps;
 
@@ -119,10 +189,22 @@ export function validateSceneQuality(
       totalGapFrames += gapFrames;
 
       result.warnings.push(
-        `Gap detected between scene ${i} and ${i + 1}: ${gapFrames} frames (${gapSeconds.toFixed(
+        `Gap detected between scene ${i - 1} and ${i}: ${gapFrames} frames (${gapSeconds.toFixed(
           2
         )}s) - THIS WILL CAUSE BLACK SCREENS`
       );
+    }
+
+    // Check for overlap with next scene
+    if (i < sceneTiming.length - 1) {
+      const nextStart = sceneTiming[i + 1].startFrame;
+      if (endFrame > nextStart) {
+        result.passed = false;
+        result.errors.push(
+          `Scene ${i} overlaps with scene ${i + 1}: ` +
+            `ends at frame ${endFrame}, next starts at ${nextStart}`
+        );
+      }
     }
 
     // Check for negative duration
@@ -166,6 +248,19 @@ export function validateSceneQuality(
   result.details.coverage.hasGaps = hasGaps;
   result.details.coverage.gapFrames = totalGapFrames;
 
+  // 4.5. Verify total scene duration matches video duration
+  const expectedDuration = totalDurationInFrames / fps;
+  const durationDiff = Math.abs(totalSceneDuration - expectedDuration);
+
+  if (durationDiff > 0.1) {
+    // Allow 0.1s tolerance for rounding
+    result.passed = false;
+    result.errors.push(
+      `Scene duration sum (${totalSceneDuration.toFixed(2)}s) doesn't match ` +
+        `video duration (${expectedDuration.toFixed(2)}s) - diff: ${durationDiff.toFixed(2)}s`
+    );
+  }
+
   const frameDifference = totalDurationInFrames - lastEndFrame;
 
   if (Math.abs(frameDifference) > 1) {
@@ -196,8 +291,10 @@ export function validateSceneQuality(
   // 5. Summary logging
   console.log(`\n📊 [QUALITY] Check Summary:`);
   console.log(`   Scenes: ${scenes.length} / ${sceneTiming.length} (${scenes.length === sceneTiming.length ? '✅' : '❌'})`);
+  console.log(`   Scene order: ${orderMismatch ? '❌ Non-sequential' : '✅ Sequential'}`);
   console.log(`   Images: ${scenes.length - missingImages.length} / ${scenes.length} (${missingImages.length === 0 ? '✅' : '❌'})`);
   console.log(`   Coverage: 0 → ${lastEndFrame} / ${totalDurationInFrames} frames (${Math.abs(frameDifference) <= 1 ? '✅' : '❌'})`);
+  console.log(`   Duration sum: ${durationDiff <= 0.1 ? '✅' : '❌'} ${totalSceneDuration.toFixed(2)}s / ${expectedDuration.toFixed(2)}s`);
   console.log(`   Gaps: ${hasGaps ? `❌ ${totalGapFrames} frames (${(totalGapFrames / fps).toFixed(2)}s)` : '✅ None'}`);
 
   if (result.errors.length > 0) {

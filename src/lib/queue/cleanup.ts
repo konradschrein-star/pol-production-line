@@ -14,8 +14,12 @@ interface CleanupResult {
 
 /**
  * Cancel and remove all queue entries for a specific job
+ *
+ * CRITICAL (Bug #3 fix): Always checks ALL queues, not just the one matching current status
+ * This prevents orphaned scene jobs when a job is deleted mid-processing
+ *
  * @param jobId - The job ID to cancel
- * @param currentStatus - Current status of the job (determines which queues to clean)
+ * @param currentStatus - Current status of the job (for logging only)
  * @returns Results of cleanup operations
  */
 export async function cancelJobQueues(
@@ -29,85 +33,78 @@ export async function cancelJobQueues(
     errors: []
   };
 
+  console.log(`🧹 [Cleanup] Removing all queue entries for job ${jobId} (status: ${currentStatus})...`);
+
+  // CRITICAL FIX (Bug #3): Always clean ALL queues, not just the one for current status
+  // Scenes may still be processing even after state transitions
+
+  // 1. Clean analyze queue
   try {
-    switch (currentStatus) {
-      case 'pending':
-      case 'analyzing':
-        // Remove from analyze queue
+    const analyzeJobs = await queueAnalyze.getJobs(['waiting', 'active', 'delayed']);
+    let removedCount = 0;
+    for (const job of analyzeJobs) {
+      if (job.data.jobId === jobId) {
         try {
-          const analyzeJobs = await queueAnalyze.getJobs(['waiting', 'active', 'delayed']);
-          let removedCount = 0;
-          for (const job of analyzeJobs) {
-            if (job.data.jobId === jobId) {
-              try {
-                await job.remove();
-                removedCount++;
-              } catch (removeError) {
-                // If individual remove fails, don't mark as success
-                results.errors.push(`Failed to remove analyze job: ${removeError instanceof Error ? removeError.message : 'Unknown error'}`);
-              }
-            }
-          }
-          // Only mark as success if we removed at least one job without errors
-          results.analyze = removedCount > 0;
-        } catch (error) {
-          results.errors.push(`Analyze queue cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          await job.remove();
+          removedCount++;
+        } catch (removeError) {
+          results.errors.push(`Failed to remove analyze job: ${removeError instanceof Error ? removeError.message : 'Unknown error'}`);
         }
-        break;
-
-      case 'generating_images':
-        // Remove all scene jobs from images queue
-        try {
-          const imageJobs = await queueImages.getJobs(['waiting', 'active', 'delayed']);
-          let removedCount = 0;
-          for (const job of imageJobs) {
-            if (job.data.jobId === jobId) {
-              try {
-                await job.remove();
-                removedCount++;
-              } catch (removeError) {
-                // If individual remove fails, don't mark as success
-                results.errors.push(`Failed to remove image job: ${removeError instanceof Error ? removeError.message : 'Unknown error'}`);
-              }
-            }
-          }
-          // Only mark as success if we removed at least one job without errors
-          results.images = removedCount > 0;
-        } catch (error) {
-          results.errors.push(`Images queue cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-        break;
-
-      case 'rendering':
-        // Remove from render queue
-        try {
-          const renderJobs = await queueRender.getJobs(['waiting', 'active', 'delayed']);
-          let removedCount = 0;
-          for (const job of renderJobs) {
-            if (job.data.jobId === jobId) {
-              try {
-                await job.remove();
-                removedCount++;
-              } catch (removeError) {
-                // If individual remove fails, don't mark as success
-                results.errors.push(`Failed to remove render job: ${removeError instanceof Error ? removeError.message : 'Unknown error'}`);
-              }
-            }
-          }
-          // Only mark as success if we removed at least one job without errors
-          results.render = removedCount > 0;
-        } catch (error) {
-          results.errors.push(`Render queue cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-        break;
-
-      // review_assets, completed, failed, cancelled - no queue cleanup needed
-      default:
-        break;
+      }
+    }
+    if (removedCount > 0) {
+      console.log(`   ✅ Removed ${removedCount} analyze job(s)`);
+      results.analyze = true;
     }
   } catch (error) {
-    results.errors.push(error instanceof Error ? error.message : 'Unknown error');
+    results.errors.push(`Analyze queue cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
+
+  // 2. Clean images queue (scene jobs)
+  try {
+    const imageJobs = await queueImages.getJobs(['waiting', 'active', 'delayed']);
+    let removedCount = 0;
+    for (const job of imageJobs) {
+      if (job.data.jobId === jobId) {
+        try {
+          await job.remove();
+          removedCount++;
+        } catch (removeError) {
+          results.errors.push(`Failed to remove image job: ${removeError instanceof Error ? removeError.message : 'Unknown error'}`);
+        }
+      }
+    }
+    if (removedCount > 0) {
+      console.log(`   ✅ Removed ${removedCount} image job(s)`);
+      results.images = true;
+    }
+  } catch (error) {
+    results.errors.push(`Images queue cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  // 3. Clean render queue
+  try {
+    const renderJobs = await queueRender.getJobs(['waiting', 'active', 'delayed']);
+    let removedCount = 0;
+    for (const job of renderJobs) {
+      if (job.data.jobId === jobId) {
+        try {
+          await job.remove();
+          removedCount++;
+        } catch (removeError) {
+          results.errors.push(`Failed to remove render job: ${removeError instanceof Error ? removeError.message : 'Unknown error'}`);
+        }
+      }
+    }
+    if (removedCount > 0) {
+      console.log(`   ✅ Removed ${removedCount} render job(s)`);
+      results.render = true;
+    }
+  } catch (error) {
+    results.errors.push(`Render queue cleanup failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  console.log(`✅ [Cleanup] Queue cleanup complete for job ${jobId}`);
 
   return results;
 }

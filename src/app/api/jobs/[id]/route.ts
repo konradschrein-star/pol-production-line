@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { cancelJobQueues } from '@/lib/queue/cleanup';
+import { resolveFilePath } from '@/lib/storage/local';
+import { unlink } from 'fs/promises';
+import { existsSync } from 'fs';
 import { jobIdParamsSchema, updateJobSchema, validateParams, validateBody, formatValidationErrors } from '@/lib/validation/schemas';
 import { sanitizeError, getErrorStatusCode } from '@/lib/errors/safe-errors';
 import { z } from 'zod';
@@ -96,10 +99,132 @@ export async function DELETE(
 
     const job = jobResult.rows[0];
 
+    // CRITICAL FIX #4: Prevent deletion of jobs in active states
+    const activeStates = ['rendering', 'analyzing', 'generating_images'];
+    if (activeStates.includes(job.status)) {
+      return NextResponse.json(
+        {
+          error: `Cannot delete job in '${job.status}' state. Please wait for completion or cancel the job first.`,
+          current_status: job.status
+        },
+        { status: 409 } // Conflict
+      );
+    }
+
     // Cancel any active queue jobs
     const cleanupResult = await cancelJobQueues(id, job.status);
 
     console.log(`🧹 [API] Queue cleanup result:`, cleanupResult);
+
+    // CRITICAL: Delete all associated files before database deletion (Bug #10 fix)
+    // This prevents orphaned files from filling disk space
+    console.log(`🗑️ [API] Cleaning up files for job ${id}...`);
+
+    const filesDeleted: string[] = [];
+    const filesFailed: string[] = [];
+
+    try {
+      // 1. Delete avatar file
+      if (job.avatar_mp4_url) {
+        try {
+          const avatarPath = resolveFilePath(job.avatar_mp4_url);
+          if (existsSync(avatarPath)) {
+            await unlink(avatarPath);
+            filesDeleted.push(job.avatar_mp4_url);
+            console.log(`   ✅ Deleted avatar: ${job.avatar_mp4_url}`);
+          }
+        } catch (error) {
+          const errorMsg = `Failed to delete avatar: ${error instanceof Error ? error.message : String(error)}`;
+          console.error(`   ❌ ${errorMsg}`);
+          filesFailed.push(job.avatar_mp4_url);
+        }
+      }
+
+      // 2. Delete final video file
+      if (job.final_video_url) {
+        try {
+          const videoPath = resolveFilePath(job.final_video_url);
+          if (existsSync(videoPath)) {
+            await unlink(videoPath);
+            filesDeleted.push(job.final_video_url);
+            console.log(`   ✅ Deleted video: ${job.final_video_url}`);
+          }
+        } catch (error) {
+          const errorMsg = `Failed to delete video: ${error instanceof Error ? error.message : String(error)}`;
+          console.error(`   ❌ ${errorMsg}`);
+          filesFailed.push(job.final_video_url);
+        }
+      }
+
+      // 3. Delete thumbnail file
+      if (job.thumbnail_url) {
+        try {
+          const thumbnailPath = resolveFilePath(job.thumbnail_url);
+          if (existsSync(thumbnailPath)) {
+            await unlink(thumbnailPath);
+            filesDeleted.push(job.thumbnail_url);
+            console.log(`   ✅ Deleted thumbnail: ${job.thumbnail_url}`);
+          }
+        } catch (error) {
+          const errorMsg = `Failed to delete thumbnail: ${error instanceof Error ? error.message : String(error)}`;
+          console.error(`   ❌ ${errorMsg}`);
+          filesFailed.push(job.thumbnail_url);
+        }
+      }
+
+      // 4. Delete scene images and reference images
+      const scenesResult = await db.query(
+        'SELECT image_url, reference_images FROM news_scenes WHERE job_id = $1',
+        [id]
+      );
+
+      for (const scene of scenesResult.rows) {
+        // Delete scene image
+        if (scene.image_url) {
+          try {
+            const imagePath = resolveFilePath(scene.image_url);
+            if (existsSync(imagePath)) {
+              await unlink(imagePath);
+              filesDeleted.push(scene.image_url);
+              console.log(`   ✅ Deleted scene image: ${scene.image_url}`);
+            }
+          } catch (error) {
+            const errorMsg = `Failed to delete scene image: ${error instanceof Error ? error.message : String(error)}`;
+            console.error(`   ❌ ${errorMsg}`);
+            filesFailed.push(scene.image_url);
+          }
+        }
+
+        // Delete reference images
+        if (scene.reference_images) {
+          const refImages = scene.reference_images as any;
+          for (const [key, value] of Object.entries(refImages)) {
+            if (typeof value === 'string' && value.startsWith('reference_images/')) {
+              try {
+                const refPath = resolveFilePath(value);
+                if (existsSync(refPath)) {
+                  await unlink(refPath);
+                  filesDeleted.push(value);
+                  console.log(`   ✅ Deleted reference image: ${value}`);
+                }
+              } catch (error) {
+                const errorMsg = `Failed to delete reference image: ${error instanceof Error ? error.message : String(error)}`;
+                console.error(`   ❌ ${errorMsg}`);
+                filesFailed.push(value);
+              }
+            }
+          }
+        }
+      }
+
+      console.log(`📊 [API] File cleanup summary:`);
+      console.log(`   Deleted: ${filesDeleted.length} files`);
+      console.log(`   Failed: ${filesFailed.length} files`);
+
+    } catch (error) {
+      console.error(`⚠️ [API] File cleanup error (non-fatal):`, error);
+      // Continue with database deletion even if file cleanup fails
+    }
 
     // Hard delete (cascades to news_scenes via ON DELETE CASCADE)
     await db.query('DELETE FROM news_jobs WHERE id = $1', [id]);
@@ -108,7 +233,9 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      cleanup: cleanupResult
+      cleanup: cleanupResult,
+      files_deleted: filesDeleted.length,
+      files_failed: filesFailed.length,
     });
 
   } catch (error: unknown) {

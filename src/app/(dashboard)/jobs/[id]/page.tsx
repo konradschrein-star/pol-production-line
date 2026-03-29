@@ -416,12 +416,12 @@ export default function StoryboardEditorPage() {
                 <div className="text-sm text-on-surface mb-4">
                   <strong>Try this first:</strong> Log into{' '}
                   <a
-                    href="https://labs.google.com/wisk"
+                    href="https://labs.google.com/whisk"
                     target="_blank"
                     rel="noopener noreferrer"
                     className="text-yellow-500 underline hover:text-yellow-400"
                   >
-                    Google Wisk
+                    Google Whisk
                   </a>{' '}
                   manually, then click the button below. Or{' '}
                   <a

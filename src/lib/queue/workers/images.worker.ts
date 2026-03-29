@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { Worker, Job } from 'bullmq';
-import { redisOptions } from '../index';
+import { redisOptions, redisConnection } from '../index';
 import { queueAvatarAutomation } from '../queues';
 import { db } from '../../db';
 import { transitionJobStateStandalone } from '../../db/transactions';
@@ -14,6 +14,8 @@ import { PromptSimplifier } from '../../ai/prompt-simplifier';
 import { stylePresetManager } from '../../style-presets/manager';
 import { referenceManager } from '../../whisk/reference-manager';
 import { getBaseStoragePath } from '../../storage/path-resolver';
+import { categorizeError } from '../../errors/categorization';
+import { withRedisLock } from '../redis-lock';
 
 interface ImageJobData {
   sceneId: string;
@@ -264,6 +266,21 @@ export const imagesWorker = new Worker<ImageJobData>(
               ]
             );
 
+            // Update scene with sanitization attempt count
+            await db.query(
+              `UPDATE news_scenes
+               SET error_category = $1,
+                   sanitization_attempts = $2,
+                   last_error_code = $3
+               WHERE id = $4`,
+              [
+                'policy_violation',
+                sanitizationAttempt,
+                'CONTENT_POLICY_VIOLATION',
+                sceneId,
+              ]
+            );
+
             // Use AI to sanitize the prompt with timeout
             try {
               currentPrompt = await withTimeout(
@@ -287,6 +304,8 @@ export const imagesWorker = new Worker<ImageJobData>(
           }
 
           // Not a policy violation or out of retries - record failure and throw error
+          const errorCategory = categorizeError(error);
+
           await db.query(
             `INSERT INTO generation_history
              (scene_id, job_id, attempt_number, success, error_message, generation_params)
@@ -298,6 +317,21 @@ export const imagesWorker = new Worker<ImageJobData>(
               false, // success = false
               errorMessage.substring(0, 500),
               JSON.stringify({ prompt: currentPrompt }),
+            ]
+          );
+
+          // Update scene with error categorization for UI display
+          await db.query(
+            `UPDATE news_scenes
+             SET error_category = $1,
+                 sanitization_attempts = $2,
+                 last_error_code = $3
+             WHERE id = $4`,
+            [
+              errorCategory,
+              sanitizationAttempt + 1,
+              'IMAGE_GENERATION_FAILED',
+              sceneId,
             ]
           );
 
@@ -358,20 +392,35 @@ export const imagesWorker = new Worker<ImageJobData>(
       rateLimiter.onSuccess();
 
       // 8. Check if all scenes for this job are complete
-      const progressResult = await db.query(
-        `SELECT
-          COUNT(*) as total,
-          COUNT(CASE WHEN generation_status = 'completed' THEN 1 END) as completed
-         FROM news_scenes
-         WHERE job_id = $1`,
-        [jobId]
-      );
+      // ✅ FIX (Bug #1): Use Redis distributed lock to prevent race condition
+      // Multiple workers can complete their scenes simultaneously and both see "all complete",
+      // leading to duplicate state transitions or multiple avatar automation jobs being queued.
+      const completionLockKey = `job:${jobId}:completion_check`;
 
-      const { total, completed } = progressResult.rows[0];
+      const lockResult = await withRedisLock(
+        completionLockKey,
+        async () => {
+          // PROTECTED SECTION: Only one worker can execute this
+          const progressResult = await db.query(
+          `SELECT
+            COUNT(*) as total,
+            COUNT(CASE WHEN generation_status = 'completed' THEN 1 END) as completed,
+            COUNT(CASE WHEN generation_status = 'failed' THEN 1 END) as failed,
+            COUNT(CASE WHEN generation_status IN ('pending', 'generating') THEN 1 END) as in_progress
+           FROM news_scenes
+           WHERE job_id = $1`,
+          [jobId]
+        );
 
-      console.log(`📊 [IMAGES] Job progress: ${completed}/${total} scenes complete`);
+        const { total, completed, failed, in_progress } = progressResult.rows[0];
 
-      if (parseInt(completed) === parseInt(total)) {
+        console.log(`📊 [IMAGES] Job progress: ${completed}/${total} scenes complete (${failed} failed, ${in_progress} in progress)`);
+
+        // Check if all scenes are done (either completed or permanently failed)
+        const allScenesProcessed = parseInt(completed) + parseInt(failed) === parseInt(total);
+
+        if (parseInt(completed) === parseInt(total)) {
+        // ✅ All scenes completed successfully
         // All scenes done → check if auto-approve is enabled
         const jobResult = await db.query(
           'SELECT job_metadata, avatar_mp4_url FROM news_jobs WHERE id = $1',
@@ -405,9 +454,16 @@ export const imagesWorker = new Worker<ImageJobData>(
             };
           }
 
-          // Queue for rendering immediately
-          await queueRender.add('render-video', { jobId });
-          console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → rendering (auto-approved)`);
+          // CRITICAL FIX #2: Wrap queue operation to prevent dead-lettered jobs
+          try {
+            await queueRender.add('render-video', { jobId });
+            console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → rendering (auto-approved)`);
+          } catch (queueError) {
+            console.error(`❌ [IMAGES] Failed to queue render job for ${jobId}:`, queueError);
+            // Revert state transition to allow retry
+            await transitionJobStateStandalone(jobId, 'rendering', 'generating_images');
+            throw new Error(`State transitioned but queue operation failed: ${queueError instanceof Error ? queueError.message : String(queueError)}`);
+          }
         } else {
           // Standard workflow: transition to review_assets
           const avatarMode = process.env.AVATAR_MODE || 'manual';
@@ -428,10 +484,18 @@ export const imagesWorker = new Worker<ImageJobData>(
             };
           }
 
+          // CRITICAL FIX #2: Wrap queue operations to prevent dead-lettered jobs
           if (avatarMode === 'automated') {
-            // Automated mode: Queue for avatar automation
-            await queueAvatarAutomation.add('generate-avatar', { jobId });
-            console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → avatar automation queued`);
+            try {
+              // Automated mode: Queue for avatar automation
+              await queueAvatarAutomation.add('generate-avatar', { jobId });
+              console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → avatar automation queued`);
+            } catch (queueError) {
+              console.error(`❌ [IMAGES] Failed to queue avatar automation for ${jobId}:`, queueError);
+              // Revert state transition to allow retry
+              await transitionJobStateStandalone(jobId, 'review_assets', 'generating_images');
+              throw new Error(`State transitioned but queue operation failed: ${queueError instanceof Error ? queueError.message : String(queueError)}`);
+            }
           } else {
             // Manual mode: Pause at review_assets for human intervention
             if (skipReview && !avatar_mp4_url) {
@@ -440,6 +504,66 @@ export const imagesWorker = new Worker<ImageJobData>(
             console.log(`✅ [IMAGES] All scenes complete! Job ${jobId} → review_assets (manual avatar generation required)`);
           }
         }
+      } else if (allScenesProcessed && parseInt(failed) > 0) {
+        // ⚠️ Some scenes failed - transition to review_assets so user can manually regenerate
+        console.warn(`⚠️  [IMAGES] Job ${jobId}: ${completed}/${total} scenes succeeded, ${failed} failed`);
+
+        // Get details of failed scenes for logging
+        const failedScenesResult = await db.query(
+          `SELECT id, scene_order, image_prompt, error_message
+           FROM news_scenes
+           WHERE job_id = $1 AND generation_status = 'failed'
+           ORDER BY scene_order`,
+          [jobId]
+        );
+
+        console.warn(`⚠️  [IMAGES] Failed scenes:`);
+        failedScenesResult.rows.forEach((scene: any) => {
+          console.warn(`   - Scene ${scene.scene_order}: ${scene.error_message?.substring(0, 100)}`);
+        });
+
+        // Transition to review_assets so user can manually regenerate failed scenes
+        const transitioned = await transitionJobStateStandalone(
+          jobId,
+          'generating_images',
+          'review_assets'
+        );
+
+        if (transitioned) {
+          console.log(`✅ [IMAGES] Job ${jobId} → review_assets (${failed} scenes need regeneration)`);
+        }
+      }
+
+          return { success: true };
+        },
+        { timeout: 30000 } // 30-second lock timeout (covers DB queries + state transitions + queue operations)
+                            // Increased from 10s to prevent timeout during slow DB operations (Bug #1 fix)
+      );
+
+      if (!lockResult) {
+        // Another worker is handling completion for this job
+        console.log(`⏭️  [IMAGES] Another worker is processing job completion for ${jobId}`);
+
+        // CRITICAL FIX #11: Check for stale locks that could indicate crashed worker
+        const { checkStaleLock } = await import('../redis-lock');
+        const staleCheck = await checkStaleLock(completionLockKey, 45000); // 45s = 1.5x timeout
+
+        if (staleCheck.isStale) {
+          console.error(
+            `⚠️  [IMAGES] STALE LOCK DETECTED for job ${jobId}! ` +
+            `Lock has been held for ${(staleCheck.ageMs! / 1000).toFixed(1)}s. ` +
+            `This may indicate a crashed worker. Lock will auto-expire soon.`
+          );
+          // Don't force-release here - let Redis auto-expiry handle it for safety
+          // Manual intervention can use forceReleaseLock() if needed
+        }
+
+        return {
+          success: true,
+          sceneId,
+          imageUrl: localPath,
+          message: 'Scene completed, completion check handled by another worker',
+        };
       }
 
       console.log(`✅ [IMAGES] Scene ${sceneId} processing complete\n`);
@@ -471,19 +595,18 @@ export const imagesWorker = new Worker<ImageJobData>(
         console.error('❌ [IMAGES] Automatic token refresh failed for scene', sceneId);
         console.error('   Error details:', errorMessage);
 
-        // Update job with helpful error message
-        await db.query(
-          'UPDATE news_jobs SET status = $1, error_message = $2 WHERE id = $3',
-          [
-            'failed',
-            'Whisk API token refresh failed. Please check Chrome profile authentication or manually refresh token.',
-            jobId
-          ]
-        );
+        // ⚠️ CRITICAL FIX: Do NOT mark entire job as failed!
+        // Only mark THIS scene as failed - other scenes can still succeed.
+        // Quality management will check if job is complete at the end.
 
         await db.query(
-          'UPDATE news_scenes SET generation_status = $1, error_message = $2 WHERE id = $3',
-          ['failed', errorMessage, sceneId]
+          `UPDATE news_scenes
+           SET generation_status = $1,
+               error_message = $2,
+               error_category = $3,
+               last_error_code = $4
+           WHERE id = $5`,
+          ['failed', errorMessage, 'auth_error', 'TOKEN_EXPIRED', sceneId]
         );
 
         // Let BullMQ retry logic handle it (don't pause queue)
@@ -499,8 +622,13 @@ export const imagesWorker = new Worker<ImageJobData>(
         console.warn(`   Current rate limiter stats:`, rateLimiter.getStats());
 
         await db.query(
-          'UPDATE news_scenes SET generation_status = $1, error_message = $2 WHERE id = $3',
-          ['pending', `Rate limited. Retrying in ${backoffDelay / 1000}s`, sceneId]
+          `UPDATE news_scenes
+           SET generation_status = $1,
+               error_message = $2,
+               error_category = $3,
+               last_error_code = $4
+           WHERE id = $5`,
+          ['pending', `Rate limited. Retrying in ${backoffDelay / 1000}s`, 'rate_limit', 'RATE_LIMIT_EXCEEDED', sceneId]
         );
 
         await delay(backoffDelay);
@@ -533,12 +661,30 @@ export const imagesWorker = new Worker<ImageJobData>(
         throw error; // BullMQ will retry
       } else {
         // Max retries reached - permanent failure
+        const errorCategory = categorizeError(errorMessage);
+
         await db.query(
-          'UPDATE news_scenes SET generation_status = $1, error_message = $2, retry_count = $3, failed_permanently = $4 WHERE id = $5',
-          ['failed', `Failed after ${MAX_RETRIES} attempts: ${errorMessage}`, MAX_RETRIES, true, sceneId]
+          `UPDATE news_scenes
+           SET generation_status = $1,
+               error_message = $2,
+               retry_count = $3,
+               failed_permanently = $4,
+               error_category = $5,
+               last_error_code = $6
+           WHERE id = $7`,
+          [
+            'failed',
+            `Failed after ${MAX_RETRIES} attempts: ${errorMessage}`,
+            MAX_RETRIES,
+            true,
+            errorCategory,
+            'MAX_RETRIES_EXCEEDED',
+            sceneId,
+          ]
         );
 
         console.error(`❌ [IMAGES] Scene ${sceneId} PERMANENTLY FAILED after ${MAX_RETRIES} attempts`);
+        console.error(`   Error category: ${errorCategory}`);
         throw error; // Let BullMQ mark as failed
       }
     }
@@ -567,15 +713,85 @@ imagesWorker.on('completed', (job) => {
   console.log(`✅ [IMAGES] Worker completed job ${job.id}`);
 });
 
-imagesWorker.on('failed', (job, err) => {
+/**
+ * Helper function for database update retry logic
+ * Prevents silent failures when database is temporarily unavailable
+ */
+async function retryDatabaseUpdate(
+  operation: () => Promise<any>,
+  maxRetries: number = 3,
+  baseDelay: number = 1000
+): Promise<void> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      await operation();
+      return; // Success
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error; // Final retry failed
+      }
+      // Exponential backoff: 1s, 2s, 4s
+      const delay = baseDelay * Math.pow(2, attempt);
+      console.warn(`⚠️  [IMAGES] Database update failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
+imagesWorker.on('failed', async (job, err) => {
   console.error(`❌ [IMAGES] Worker failed job ${job?.id}:`, err);
 
   // Update scene status to failed if job failed
   if (job?.data?.sceneId) {
-    db.query(
-      'UPDATE news_scenes SET generation_status = $1, error_message = $2 WHERE id = $3',
-      ['failed', `Job failed: ${err.message}`, job.data.sceneId]
-    ).catch(e => console.error('Failed to update scene status:', e));
+    try {
+      // Update scene status with retry logic
+      await retryDatabaseUpdate(
+        () => db.query(
+          'UPDATE news_scenes SET generation_status = $1, error_message = $2, failed_permanently = $3 WHERE id = $4',
+          ['failed', `Job failed: ${err.message}`, true, job.data.sceneId]
+        )
+      );
+
+      // Create notification for user visibility
+      const { createNotification } = await import('../../notifications');
+      await createNotification({
+        job_id: job.data.jobId,
+        scene_id: job.data.sceneId,
+        severity: 'error',
+        category: 'image_generation',
+        message: `Scene ${job.data.sceneOrder} failed after ${job.attemptsMade} attempts`,
+        details: {
+          error: err.message,
+          sceneOrder: job.data.sceneOrder,
+          retryCount: job.attemptsMade,
+          imagePrompt: job.data.imagePrompt?.substring(0, 100) // First 100 chars for context
+        }
+      });
+
+      console.log(`📢 [IMAGES] Created failure notification for scene ${job.data.sceneOrder}`);
+
+    } catch (dbError) {
+      // Critical: Database updates failed after retries
+      console.error('🚨 CRITICAL: Failed to persist scene failure after retries');
+      console.error('   Job ID:', job?.data?.jobId);
+      console.error('   Scene ID:', job?.data?.sceneId);
+      console.error('   Original Error:', err.message);
+      console.error('   Database Error:', dbError instanceof Error ? dbError.message : String(dbError));
+
+      // Last resort: Try to write to system logs if available
+      try {
+        const { logger } = await import('../../logger');
+        logger.error('image_generation', 'CRITICAL: Failed to persist scene failure', {
+          jobId: job?.data?.jobId,
+          sceneId: job?.data?.sceneId,
+          originalError: err.message,
+          dbError: dbError instanceof Error ? dbError.message : String(dbError)
+        });
+      } catch (logError) {
+        // Even logging failed - this is extremely rare
+        console.error('   Even logging failed:', logError);
+      }
+    }
   }
 });
 

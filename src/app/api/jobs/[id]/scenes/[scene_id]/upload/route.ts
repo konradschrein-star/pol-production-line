@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { saveBuffer } from '@/lib/storage/local';
+import { saveBuffer, checkDiskSpace } from '@/lib/storage/local';
 import { validateImage, processImage } from '@/lib/utils/image-processing';
+import { sceneIdParamsSchema, validateParams } from '@/lib/validation/schemas';
 
 /**
  * POST /api/jobs/[id]/scenes/[scene_id]/upload
@@ -13,7 +14,8 @@ export async function POST(
   { params }: { params: { id: string; scene_id: string } }
 ) {
   try {
-    const { id, scene_id } = params;
+    // SECURITY: Validate UUID parameters to prevent SQL injection
+    const { id, scene_id } = validateParams(sceneIdParamsSchema, params);
 
     console.log(`📤 [API] Manual image upload for scene ${scene_id}...`);
 
@@ -65,7 +67,20 @@ export async function POST(
       );
     }
 
+    // CRITICAL: Check disk space before accepting upload (Bug #8 fix)
+    const diskSpaceCheck = checkDiskSpace(500); // Require 500MB free
+    if (!diskSpaceCheck.available) {
+      return NextResponse.json(
+        {
+          error: `Insufficient disk space. Available: ${diskSpaceCheck.availableMB.toFixed(0)}MB, Required: ${diskSpaceCheck.requiredMB}MB.`,
+          path: diskSpaceCheck.path,
+        },
+        { status: 507 } // 507 Insufficient Storage
+      );
+    }
+
     console.log(`📦 [API] Processing file: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+    console.log(`💾 [API] Disk space: ${diskSpaceCheck.availableMB.toFixed(0)}MB available`);
 
     // Convert File to Buffer
     const arrayBuffer = await file.arrayBuffer();

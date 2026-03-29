@@ -96,11 +96,21 @@ export default function BroadcastsPage() {
     return () => clearTimeout(debounceTimer);
   }, [currentPage, statusFilter, searchQuery, sortConfig]);
 
-  // Auto-refresh every 10 seconds (slower to reduce scroll interference)
-  // Only updates data, doesn't force scroll position
+  // Auto-refresh with circuit breaker pattern
+  // Stops retrying after auth failures (401/403)
   useEffect(() => {
-    const interval = setInterval(() => {
-      // Silently refetch without showing loading state
+    let consecutiveFailures = 0;
+    const MAX_FAILURES = 3;
+    let circuitOpen = false;
+    const abortController = new AbortController();
+
+    const interval = setInterval(async () => {
+      // Circuit breaker: stop polling after repeated failures
+      if (circuitOpen) {
+        console.warn('[Auto-refresh] Circuit open - stopped polling due to repeated failures');
+        return;
+      }
+
       const params = new URLSearchParams({
         page: currentPage.toString(),
         limit: '20',
@@ -110,16 +120,58 @@ export default function BroadcastsPage() {
       if (statusFilter !== 'all') params.append('status', statusFilter);
       if (searchQuery) params.append('search', searchQuery);
 
-      fetch(`/api/jobs?${params}`)
-        .then(res => res.json())
-        .then(data => {
-          setJobs(data.jobs);
-          setPagination(data.pagination);
-        })
-        .catch(err => console.error('Auto-refresh failed:', err));
-    }, 10000); // Increased to 10 seconds
+      try {
+        const res = await fetch(`/api/jobs?${params}`, {
+          signal: abortController.signal,
+        });
 
-    return () => clearInterval(interval);
+        // ✅ PROFESSIONAL: Don't retry on auth failures (permanent errors)
+        if (res.status === 401 || res.status === 403) {
+          console.error('[Auto-refresh] Authentication failed - stopping auto-refresh');
+          circuitOpen = true;
+          clearInterval(interval);
+          // TODO: Show user notification or redirect to login
+          return;
+        }
+
+        // ✅ PROFESSIONAL: Handle other errors gracefully
+        if (!res.ok) {
+          consecutiveFailures++;
+          if (consecutiveFailures >= MAX_FAILURES) {
+            console.error(`[Auto-refresh] Circuit breaker: ${MAX_FAILURES} consecutive failures - stopping polling`);
+            circuitOpen = true;
+            clearInterval(interval);
+          }
+          return;
+        }
+
+        // Success - reset failure counter
+        consecutiveFailures = 0;
+
+        const data = await res.json();
+        setJobs(data.jobs);
+        setPagination(data.pagination);
+      } catch (err) {
+        // Ignore abort errors (component unmounted)
+        if (err instanceof Error && err.name === 'AbortError') {
+          return;
+        }
+
+        consecutiveFailures++;
+        console.error('[Auto-refresh] Network error:', err);
+
+        if (consecutiveFailures >= MAX_FAILURES) {
+          console.error(`[Auto-refresh] Circuit breaker: ${MAX_FAILURES} consecutive failures - stopping polling`);
+          circuitOpen = true;
+          clearInterval(interval);
+        }
+      }
+    }, 10000);
+
+    return () => {
+      clearInterval(interval);
+      abortController.abort();
+    };
   }, [currentPage, statusFilter, searchQuery, sortConfig]);
 
   const handleBulkDelete = async () => {

@@ -25,6 +25,7 @@ const PUBLIC_ENDPOINTS = [
   '/api/health',
   '/api/whisk/token',  // Chrome extension needs to POST tokens without API key
   '/api/whisk/extension-status',  // Extension status check
+  '/api/system/update-whisk-token',  // Chrome extension token update endpoint
 ];
 
 /**
@@ -282,7 +283,31 @@ export async function middleware(req: NextRequest) {
   // Allow same-origin browser requests (no Bearer token needed from the UI)
   const referer = req.headers.get('referer') || '';
   const origin = req.headers.get('origin') || '';
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:8347';
+
+  // ✅ FIX: Environment-aware URL fallback
+  // Development: Allow localhost fallback for local testing
+  // Production: Require explicit configuration (no unsafe defaults)
+  let appUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (!appUrl) {
+    if (isProduction) {
+      // Production: fail-secure (no localhost fallback)
+      console.error('[AUTH] NEXT_PUBLIC_APP_URL not configured in production environment');
+      const response = NextResponse.json(
+        {
+          error: 'Configuration Error',
+          message: 'NEXT_PUBLIC_APP_URL must be set in production environment.',
+        },
+        { status: 500 }
+      );
+      for (const [key, value] of Object.entries(securityHeaders)) {
+        response.headers.set(key, value);
+      }
+      return response;
+    }
+    // Development: allow localhost fallback
+    appUrl = 'http://localhost:8347';
+  }
+
   const isBrowserRequest = referer.startsWith(appUrl) || origin.startsWith(appUrl) ||
     req.headers.get('sec-fetch-site') === 'same-origin' ||
     req.headers.get('sec-fetch-mode') === 'navigate';
@@ -291,7 +316,17 @@ export async function middleware(req: NextRequest) {
     const isAuthenticated = verifyAuthentication(req);
 
     if (!isAuthenticated) {
-      console.warn(`[AUTH] Unauthorized request to ${pathname} from ${req.ip || 'unknown'}`);
+      // ✅ PROFESSIONAL: Only log unique failures, not spam
+      // Deduplicate warnings to prevent log flooding
+      const warnKey = `${pathname}-${req.ip || 'unknown'}`;
+      const now = Date.now();
+      const lastWarn = (global as any)._authWarnings?.[warnKey] || 0;
+
+      if (now - lastWarn > 60000) { // Log once per minute per path/IP
+        console.warn(`[AUTH] Unauthorized request to ${pathname} from ${req.ip || 'unknown'}`);
+        (global as any)._authWarnings = (global as any)._authWarnings || {};
+        (global as any)._authWarnings[warnKey] = now;
+      }
 
       const response = NextResponse.json(
         {

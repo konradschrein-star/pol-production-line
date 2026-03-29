@@ -37,8 +37,8 @@ The browser automation was not working due to:
 ### Step 1: Install Extension
 Make sure Auto Whisk is installed in **Chrome** (not Edge):
 ```
-Extension ID: gedfnhdibkfgacmkbjgpfjihacalnlpn
-Location: C:\Users\{username}\AppData\Local\Google\Chrome\User Data\Default\Extensions\gedfnhdibkfgacmkbjgpfjihacalnlpn
+Extension ID: gcgblhgncmhjchllkcpcneeibddhmbbe
+Location: C:\Users\{username}\AppData\Local\Google\Chrome\User Data\Default\Extensions\gcgblhgncmhjchllkcpcneeibddhmbbe
 ```
 
 ### Step 2: Run First Test (One-Time Login)
@@ -87,7 +87,7 @@ npm run test:autowhisk
 ### Extension Loading
 ```javascript
 // Extension loaded from actual Chrome installation
-const extensionPath = 'C:\\Users\\{username}\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Extensions\\gedfnhdibkfgacmkbjgpfjihacalnlpn\\8.4.3_0';
+const extensionPath = 'C:\\Users\\{username}\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Extensions\\gcgblhgncmhjchllkcpcneeibddhmbbe\\8.4.3_0';
 
 // Launch with extension
 await chromium.launchPersistentContext(userDataDir, {
